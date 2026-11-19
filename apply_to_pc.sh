@@ -32,6 +32,9 @@ fi
 
 same() { [ "$(realpath -m "$1")" = "$(realpath -m "$2")" ]; }
 
+# 실행 권한(chmod +x) 변경을 git 이 "수정됨"으로 보지 않게: 안 그러면 다음 git pull 이 막힐 수 있다
+git -C "$REPO" rev-parse --git-dir >/dev/null 2>&1 && git -C "$REPO" config core.fileMode false
+
 # 1) svg_mppi_exp: 코드 폴더만 (결과 폴더 runs/ tuning/ 등은 그대로)
 mkdir -p "$SHARED"
 if same "$REPO/svg_mppi_exp" "$SHARED/svg_mppi_exp"; then
