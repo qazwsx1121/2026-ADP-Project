@@ -18,12 +18,13 @@ ForzaETH race stack(ROS 2 Humble)의 PP/TLN 컨트롤러를 **SVG-MPPI**(Honda e
 |---|---|
 | [`svg_mppi/`](svg_mppi/) | ROS 2 연결 노드 패키지 (공식 ROS 1 노드 3개를 노드 1개로 이식, 주행 중 파라미터 변경, 연속 장애물용 가이드 기준 경로 등). 자세한 내용은 [`svg_mppi/README.md`](svg_mppi/README.md) |
 | [`proj-svg_mppi/`](proj-svg_mppi/) | 공식 SVG-MPPI 코드 ([kohonda/proj-svg_mppi](https://github.com/kohonda/proj-svg_mppi), MIT, 수정 없음) |
-| [`svg_mppi_exp/tools/`](svg_mppi_exp/tools/) | 실험 실행(`run_exp.sh`, `batch*.sh`), 학습(`train.sh`, `tune.py`), 검증(`validate.sh`), 주행 중 파라미터 적용(`param_scheduler.py`) |
+| [`svg_mppi_exp/tools/`](svg_mppi_exp/tools/) | 실험 실행(`run_exp.sh`, `batch*.sh`), 학습(`train.sh`, `tune.py`), 검증(`validate.sh`), 주행 중 파라미터 적용(`param_scheduler.py`), 노이즈 실험(`obstacle_noise.py`, `scan_noise.py`, `noise_sweep.sh`) |
 | [`svg_mppi_exp/configs/`](svg_mppi_exp/configs/) | 실험별 파라미터 파일, 학습 탐색 범위(`tune_space.yaml`) |
 | [`svg_mppi_exp/analysis/`](svg_mppi_exp/analysis/) | 결과 요약·그래프 스크립트 |
 | [`svg_mppi_exp/report/`](svg_mppi_exp/report/) | 실험 보고서 (`index.html`, 그림) |
 | `svg_mppi_exp/pylib/` | Optuna 등 파이썬 라이브러리 (컨테이너에 pip 없이 쓰기 위해 포함) |
 | [`학교PC_시작하기.md`](학교PC_시작하기.md) | 학교 PC에서 세팅 → 학습 → 검증까지 단계별 안내 |
+| [`학교PC_노이즈실험.md`](학교PC_노이즈실험.md) | 평가 때 장애물 노이즈 대비: 노이즈 실험, 노이즈를 켠 학습·검증 |
 
 ## 시작하기
 
@@ -68,10 +69,18 @@ bash ~/shared_dir/svg_mppi_exp/tools/train.sh berlin_v1 trials=60 laps=4 seed=10
 
 설정 고르는 법, 학습·검증 절차, 문제 해결은 [`학교PC_시작하기.md`](학교PC_시작하기.md)에 정리되어 있습니다.
 
+노이즈를 켠 실험은 `run_exp.sh`에 옵션을 더하거나(`onoise=0.10 orot=1` 장애물 위치·회전, `snoise=0.03 sdrop=0.02 sghost=0.005` 라이다) `noise_sweep.sh`로 한 번에 돌립니다. 자세한 내용은 [`학교PC_노이즈실험.md`](학교PC_노이즈실험.md)에 있습니다.
+
+```bash
+bash ~/shared_dir/svg_mppi_exp/tools/noise_sweep.sh base=$C/<설정>.yaml        # 노이즈 강건성 실험 (약 2시간 15분)
+bash ~/shared_dir/svg_mppi_exp/tools/train.sh berlin_noise params=$C/<설정>.yaml noise="onoise=0.10 orot=1 snoise=0.03 sdrop=0.02 sghost=0.005"
+```
+
 ## 주요 결과 요약
 
 - **λ 3.0 → 1.0**: berlin 왼쪽 위 S자 헤어핀에서 막다른 공간 진입이 장애물 0 기준 39랩 중 13회 → 44랩 중 0회.
 - **충돌 지도 부풀림 rigid → circle 0.15 m**: 장애물 4개, seed 5개 각 240 s 기준 28랩·충돌 34회 → 65랩·충돌 11회.
+- **장애물 노이즈 대비** (seed 3개, 각 240 s, guide + 헤어핀에서만 guide 끔): 장애물 위치 σ 0.10 m + 회전 무작위에서는 43랩 무충돌. 라이다 노이즈(거리 σ 3 cm, 빔 누락 2%, 허상 점 0.5%)에서는 충돌 5 → 11회로 늘어, 라이다 외톨이 점 제거 필터(`local_costmap.filter_isolated`, 기본 꺼짐)를 추가하고 학교 PC에서 확인 중.
 - 상세 근거는 [`svg_mppi/README.md`](svg_mppi/README.md)와 [`svg_mppi_exp/report/`](svg_mppi_exp/report/)를 참고하세요.
 
 ## 일정
