@@ -282,6 +282,8 @@ class SVGMPPINode : public rclcpp::Node {
     cm_max_val_ = declare_parameter<double>("local_costmap.max_val", 100.0);
     cm_inflation_circle_ = declare_parameter<std::string>("local_costmap.inflation_mode", "circle") == "circle";  // [변경 11/19] 공식 rigid
     cm_circle_radius_ = declare_parameter<double>("local_costmap.circle_radius", 0.15);
+    cm_filter_isolated_ = declare_parameter<bool>("local_costmap.filter_isolated", false);  // [추가] 라이다 허상 점 제거
+    cm_filter_radius_ = declare_parameter<double>("local_costmap.filter_radius", 0.10);
     cost_map_ = grid_map::GridMap({kCollisionLayer});
     cost_map_.setGeometry(grid_map::Length(mx, my), mr, grid_map::Position(ox, oy));
 
@@ -979,6 +981,25 @@ class SVGMPPINode : public rclcpp::Node {
     }
     const double res = cost_map_.getResolution();
     const grid_map::Size gsz = cost_map_.getSize();
+    if (cm_filter_isolated_) {
+      // [추가] 외톨이 점 제거: 주변 filter_radius 안에 다른 스캔 점이 하나도 없으면 허상 점으로 보고 지움
+      const int rr = std::max(1, static_cast<int>(std::ceil(cm_filter_radius_ / res)));
+      std::vector<grid_map::Index> kept;
+      kept.reserve(occupied.size());
+      for (const auto& index : occupied) {
+        bool nb = false;
+        for (int dx = -rr; dx <= rr && !nb; ++dx)
+          for (int dy = -rr; dy <= rr && !nb; ++dy) {
+            if (dx == 0 && dy == 0) continue;
+            const int x = index.x() + dx, y = index.y() + dy;
+            if (x >= 0 && y >= 0 && x < gsz(0) && y < gsz(1) && data(x, y) > 0) nb = true;
+          }
+        if (nb) kept.push_back(index);
+      }
+      for (const auto& index : occupied) data(index.x(), index.y()) = 0;
+      for (const auto& index : kept) data(index.x(), index.y()) = cm_max_val_;
+      occupied.swap(kept);
+    }
     if (cm_inflation_circle_) {
       // [추가] 방향과 무관한 원형 부풀림 (기본은 아래 공식 rigid body 방식)
       const int rr = static_cast<int>(std::ceil(cm_circle_radius_ / res));
@@ -1377,6 +1398,8 @@ class SVGMPPINode : public rclcpp::Node {
   double bl2front_ = 0.47, bl2rear_ = 0.14, bl2right_ = 0.15, bl2left_ = 0.15, cm_max_val_ = 100.0;
   bool cm_inflation_circle_ = true;
   double cm_circle_radius_ = 0.15;
+  bool cm_filter_isolated_ = false;
+  double cm_filter_radius_ = 0.10;
 
   // guide
   std::mutex cfg_mtx_, map_mtx_;

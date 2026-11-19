@@ -214,6 +214,30 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   <p>8000도 돌아가고 장애물이 없으면 랩타임 차이도 없습니다. 하지만 장애물이 있으면 계산이 55 ms(약 18 Hz)까지 늘어 반응이 늦어집니다. 아래 5-seed 비교의 E 조건이 원본 8000입니다. 평가 PC(8코어 16스레드)에서는 8000이 25 ms 안에 들어올 가능성이 있어, 거기서 다시 재야 합니다.</p>
 </section>
 
+<section id="noise">
+  <h2>2-1. 평가 때 "장애물 노이즈" 대비 (11/20)</h2>
+  <p>교수님이 기말 평가 때 장애물에 노이즈를 넣는다고 했습니다(종류는 미정). 수업 시뮬레이터 코드는 그대로 두고, 중간에 노드를 끼워 두 종류를 직접 넣어 봤습니다.</p>
+  <ul>
+    <li><strong>장애물 흔들기(N2):</strong> 배치마다 장애물 위치를 σ 0.10 m로 흔들고 회전을 무작위로. 시뮬레이터가 이 위치로 라이다와 충돌을 계산합니다.</li>
+    <li><strong>라이다 노이즈(N3):</strong> 컨트롤러가 보는 스캔에만 거리 σ 3 cm, 빔 누락 2%, 허상 점 0.5%.</li>
+  </ul>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>설정 (seed 2026·11·7, 240 s씩)</th><th class="num">노이즈 없음</th><th class="num">장애물 흔들기</th><th class="num">라이다</th><th class="num">둘 다</th></tr></thead>
+      <tbody>
+        <tr><td>C 원형 0.15, guide 끔</td><td class="num">9 / 37</td><td class="num">10 / 42</td><td class="num">23 / 37</td><td class="num">22 / 35</td></tr>
+        <tr class="hl"><td>F guide + 헤어핀에서만 끔</td><td class="num">5 / 42</td><td class="num">0 / 43</td><td class="num">11 / 40</td><td class="num">7 / 39</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="lead" style="font-size:14px">칸 = 충돌 수 / 랩 수.</p>
+  <ul>
+    <li><strong>장애물 위치 노이즈에는 강합니다.</strong> 우리 방식은 장애물을 미리 알지 않고 매 주기 라이다로만 보기 때문입니다. F는 43랩 모두 무충돌이었습니다.</li>
+    <li><strong>라이다 노이즈에는 약합니다.</strong> 허상 점이 차 앞에 가짜 장애물을 만들어 C는 충돌이 2.5배가 됐습니다. F가 C보다 덜 흔들립니다.</li>
+    <li>대응으로 충돌 지도에 넣기 전 <strong>외톨이 점(주변 0.1 m 안에 다른 점이 없는 점)을 지우는 필터</strong>를 노드에 추가했습니다(기본 꺼짐). 효과 확인과 노이즈를 켠 학습은 학교 PC에서 진행합니다(<code>noise_sweep.sh</code>, <code>train.sh noise=…</code>).</li>
+  </ul>
+</section>
+
 <section id="learning">
   <h2>3. 학습은 어떻게 할까</h2>
   <p>A~C 안 모두 "학습"이라고 부를 수 있지만, 남은 4주와 시뮬 속도를 생각하면 범위를 정해야 합니다. 시뮬레이터는 0.01 s 벽시계 타이머로 돌아서 <strong>실시간보다 빠르게 돌릴 수 없고</strong>, 한 랩이 약 16 s라 1시간에 200랩 남짓입니다.</p>
