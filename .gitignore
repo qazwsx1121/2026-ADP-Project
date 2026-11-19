@@ -7,3 +7,5 @@ svg_mppi_exp/backup_*/
 __pycache__/
 *.pyc
 *.zip
+# 학습 로그는 크므로 제외 (tuning 의 .db, _trials.csv, _best_schedule.yaml 만 올리면 됨)
+svg_mppi_exp/tuning/*.log
