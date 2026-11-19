@@ -1,0 +1,317 @@
+<title>8조 SVG-MPPI 실험 노트</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* layout: single reading column (~72ch) with full-width figures and scrollable tables; track-map blue as the one accent */
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --fg: #1b2230;
+  --muted: #5a6476;
+  --line: #dde1e8;
+  --accent: #2e6fd8;
+  --good: #1f8a4c;
+  --bad: #c43b3b;
+  --warn: #a87800;
+  --code-bg: #eef1f5;
+  --font-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12161d; --surface: #191f28; --fg: #e4e8ef; --muted: #9aa4b5; --line: #2b3340;
+    --accent: #6c9cf0; --good: #4cc27f; --bad: #ef7a7a; --warn: #e2b23c; --code-bg: #222a35; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12161d; --surface: #191f28; --fg: #e4e8ef; --muted: #9aa4b5; --line: #2b3340;
+  --accent: #6c9cf0; --good: #4cc27f; --bad: #ef7a7a; --warn: #e2b23c; --code-bg: #222a35; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 16px; line-height: 1.7;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 32px 64px;
+}
+main { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 40px; }
+header { display: flex; flex-direction: column; gap: 8px; }
+.eyebrow { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+h1 { font-size: 30px; line-height: 1.3; margin: 0; text-wrap: balance; }
+h2 { font-size: 22px; line-height: 1.35; margin: 0; text-wrap: balance; padding-top: 8px; border-top: 1px solid var(--line); }
+h3 { font-size: 17px; margin: 0; }
+section { display: flex; flex-direction: column; gap: 14px; }
+p { margin: 0; }
+ul, ol { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
+.lead { color: var(--muted); }
+.summary { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; }
+.summary li strong { color: var(--fg); }
+.tag { display: inline-block; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; line-height: 1.6; white-space: nowrap; }
+.tag.good { color: var(--good); } .tag.bad { color: var(--bad); } .tag.warn { color: var(--warn); } .tag.info { color: var(--accent); }
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-weight: 600; color: var(--muted); font-size: 13px; white-space: nowrap; }
+tr:last-child td { border-bottom: none; }
+td.num, th.num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+tr.hl td { background: color-mix(in srgb, var(--good) 10%, transparent); }
+figure { margin: 0; display: flex; flex-direction: column; gap: 8px; }
+figure img { width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--line); background: #fff; }
+figcaption { font-size: 14px; color: var(--muted); }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 640px) { .two { grid-template-columns: 1fr; } }
+code, .mono { font-family: var(--font-mono); font-size: 0.9em; }
+code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+pre { background: var(--code-bg); padding: 12px 14px; border-radius: 8px; overflow-x: auto; font-size: 13px; line-height: 1.55; margin: 0; }
+pre code { background: none; padding: 0; }
+.note { border-left: 3px solid var(--warn); padding: 4px 0 4px 14px; color: var(--fg); }
+.decide { border: 1px solid var(--accent); border-radius: 10px; padding: 14px 18px; display: flex; flex-direction: column; gap: 8px; }
+a { color: var(--accent); }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+
+<main>
+<header>
+  <span class="eyebrow">자율주행 프로그래밍 · 8조 · 2026-11-19</span>
+  <h1>SVG-MPPI 헤어핀 문제와 장애물 가이드 실험 노트</h1>
+  <p class="lead">berlin 맵, 수업 컨테이너(<code>misys:forza_full</code>), 내 PC(i5-8500)에서 GUI 없이 돌린 실험 결과입니다. 실험 한 번은 300초(약 15~18랩)이고, 결과는 race_manager 전광판 기록(JSON/PNG) 그대로입니다.</p>
+</header>
+
+<section class="summary" aria-label="요약">
+  <h3>요약</h3>
+  <ul>
+    <li><strong>S자 막다른 길 문제의 원인을 찾아 해결했습니다.</strong> SVG-MPPI의 온도 파라미터 <code>svg_mppi.lambda</code>가 3.0이면 헤어핀 꼭짓점에서 좌회전(정답)과 우회전(막다른 주머니) 후보가 가중 평균에서 섞이고, 수가 많은 우회전 쪽으로 넘어갑니다. <strong>λ = 1.0</strong>으로 바꾸자 주머니 진입이 <strong>39랩 중 13회 → 44랩 중 0회</strong>, 클린 랩 평균이 <strong>17.4 s → 15.9 s</strong>가 됐습니다.</li>
+    <li>예상했던 원인들(예측 구간이 짧다, 모델이 시뮬과 다르다, 헤어핀이 빠르다, 차체 크기가 크다)은 실험해 보니 <strong>모두 오히려 나빠지거나 효과가 없었습니다.</strong></li>
+    <li><strong>장애물 회피의 가장 큰 개선은 충돌 지도 부풀림 방식입니다.</strong> 공식 방식(판단 시점 차 방향 상자)을 방향과 무관한 원형 반지름 0.15 m로 바꾸자, seed 5개 기준 충돌이 <strong>34 → 11회</strong>, 같은 시간 랩 수가 <strong>28 → 65</strong>가 됐습니다. 어떤 설정으로도 못 지나가던 헤어핀 꼭짓점 장애물 배치도 무충돌로 통과합니다.</li>
+    <li><strong>장애물 순서를 고려한 가이드 기준 경로(guide)</strong>를 구현했습니다. 빠른 구간의 장애물에는 효과가 있지만 헤어핀에서는 벽 충돌을 늘립니다. 헤어핀에서만 끄는 구간 표(학습 B안의 첫 사례)를 쓰면 seed 5개에서 <strong>69랩, 충돌 9회로 가장 좋았지만</strong>, guide 없이 원형 부풀림만 쓴 경우(65랩, 11회)와의 차이는 아직 우연일 수 있는 크기입니다. <span class="tag warn">seed 추가 확인 필요</span></li>
+    <li>원본 샘플 8000도 돌아가지만 내 PC에서는 약 20 Hz로 느려져 장애물 조건에서 더 나쁩니다. light(3000)를 유지하고, 평가 PC에서 다시 잽니다.</li>
+    <li>주행 중 <code>ros2 param set</code>으로 파라미터를 바꾸는 기능, 구간별 자동 변경 노드, Optuna 학습 스크립트를 만들었습니다(학습은 아직 돌리지 않음).</li>
+  </ul>
+</section>
+
+<section id="pocket">
+  <h2>1. S자 막다른 길(주머니) — 원인과 해결</h2>
+  <p>왼쪽 위 헤어핀(s ≈ 24 m, 회전 반경 0.95 m)에서 차가 왼쪽으로 꺾지 않고 정면의 막다른 공간으로 들어가 한 바퀴 돈 뒤 역주행으로 빠져나오는 문제입니다. 기존 설정으로 재현하면 약 3랩에 1번꼴(+7.5 s)로 일어납니다.</p>
+
+  <figure>
+    <img src="img/hairpin_lambda.png" alt="헤어핀 구간 주행 궤적 비교. 왼쪽 lambda 3.0은 여러 랩이 오른쪽 막다른 공간으로 들어가 원을 그리고, 오른쪽 lambda 1.0은 모든 랩이 레이스라인을 따라 왼쪽으로 돈다." width="1144" height="616">
+    <figcaption>같은 헤어핀, 모든 랩의 궤적. 빨간 점 = 막다른 주머니 안. 왼쪽 λ 3.0(16랩, 5회 진입), 오른쪽 λ 1.0(18랩, 0회).</figcaption>
+  </figure>
+
+  <h3>무엇을 확인했나</h3>
+  <p>문제가 생긴 순간을 기록해 보니, 실패한 랩도 s = 23.5 m까지는 조향·속도·횡오차가 정상 랩과 똑같았습니다. 꼭짓점(s ≈ 24 m)에서 <strong>MPPI 충돌률이 한 주기 만에 0.0 → 0.4~0.8로 뛰고</strong>, 같은 주기에 조향이 +0.2 rad(좌)에서 −0.3 rad(우)로 뒤집혔습니다. 차의 상태가 아니라 solver의 선택 문제라는 뜻입니다.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>조건 (light 설정 기준, 장애물 0)</th><th class="num">랩</th><th class="num">주머니 진입</th><th class="num">벽 충돌</th><th>판정</th></tr></thead>
+      <tbody>
+        <tr><td>기준: λ 3.0 (3회 실행 합계)</td><td class="num">39</td><td class="num">13</td><td class="num">2</td><td>재현됨</td></tr>
+        <tr><td>예측 구간 0.75 → 1.2 s</td><td class="num">6</td><td class="num">37</td><td class="num">30</td><td><span class="tag bad">악화</span></td></tr>
+        <tr><td>MPPI 모델을 시뮬 값으로 (조향 0.4189, lf/lr)</td><td class="num">1</td><td class="num">24</td><td class="num">17</td><td><span class="tag bad">악화</span></td></tr>
+        <tr><td>헤어핀 진입 속도 ×0.75</td><td class="num">8</td><td class="num">16</td><td class="num">7</td><td><span class="tag bad">악화</span></td></tr>
+        <tr><td>충돌 상자를 시뮬 차체 크기로</td><td class="num">14</td><td class="num">7</td><td class="num">2</td><td><span class="tag warn">효과 없음</span></td></tr>
+        <tr class="hl"><td><strong>λ 3.0 → 1.0</strong> (4회 실행 합계)</td><td class="num">44</td><td class="num">0</td><td class="num">0</td><td><span class="tag good">해결</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="lead" style="font-size:14px">예측 구간+모델, 차체 크기+모델 조합도 돌렸고 둘 다 크게 악화(벽 충돌 84회, 57회)했습니다.</p>
+
+  <h3>왜 λ인가</h3>
+  <p>MPPI는 샘플 3000개를 굴려 보고, 충돌하지 않은 샘플을 <code>exp(−비용/λ)</code>로 가중 평균해 조향을 정합니다. 헤어핀 꼭짓점에서는</p>
+  <ul>
+    <li>올바른 <strong>좌회전 통로는 좁아서</strong> 충돌하지 않는 샘플이 적고(비용은 낮음),</li>
+    <li>정면의 <strong>주머니는 넓어서</strong> 충돌하지 않는 샘플이 아주 많습니다(레이스라인에서 멀어서 비용은 조금 높음).</li>
+  </ul>
+  <p>λ = 3이면 비용 차이가 가중치에 약하게 반영돼서 <strong>"수가 많은 오른쪽"이 평균을 끌고 갑니다.</strong> 좌우 두 모드가 섞인 평균이 오른쪽으로 넘어가는 순간 차가 주머니로 들어갑니다. λ = 1이면 비용이 가장 낮은 좌회전 샘플이 확실히 이깁니다(아래 그림: 상위 후보 400개가 모두 좌회전).</p>
+  <p>다른 실험 결과도 같은 방향으로 설명됩니다. 속도를 줄이면 오른쪽 샘플이 덜 멀리 가서 비용이 작아져 더 경쟁력이 생기고, 예측 구간을 늘리거나 모델을 정직하게 하면 좌회전 샘플이 더 많이 충돌로 판정돼 줄어듭니다.</p>
+  <figure>
+    <img src="img/dump_lambda1_hairpin.png" alt="lambda 1.0일 때 헤어핀 꼭짓점에서 solver가 본 상태. 회색 점은 충돌 지도, 후보 궤적 400개가 모두 왼쪽으로 휘어 있고 최종 출력(파랑)도 왼쪽이다." width="520" height="520" style="max-width:520px">
+    <figcaption>λ 1.0, 꼭짓점에서 solver가 본 것(진단 기록). 충돌률 0.63이지만 상위 후보 400개 모두 좌회전. 회색 점 = 라이다로 만든 충돌 지도(차 방향으로 부풀린 것).</figcaption>
+  </figure>
+  <p class="note">교수님 피드백("SVG 선택을 어떻게 유도할지")과 바로 이어지는 결과입니다. SVG의 guide 입자가 방향을 골라도, 마지막 MPPI 가중 평균의 온도가 높으면 두 모드가 다시 섞입니다. 발표에서 "모드 선택 실패의 원인을 λ로 찾았다"를 근거 자료로 쓸 수 있습니다.</p>
+
+  <div class="two">
+    <figure><img src="img/scoreboard_lambda3.png" alt="λ 3.0 실행의 전광판: 16랩, 베스트 16.07초, 23초대 랩 2개와 벽 충돌 2회" width="1800" height="1080"><figcaption>전광판, λ 3.0: 23 s대 랩(주머니) 2개, 벽 충돌 2회</figcaption></figure>
+    <figure><img src="img/scoreboard_lambda1.png" alt="λ 1.0 실행의 전광판: 18랩, 베스트 15.75초, 모든 랩이 15~16초, 충돌 0" width="1800" height="1080"><figcaption>전광판, λ 1.0: 18랩 모두 15.7~16.1 s, 충돌 0</figcaption></figure>
+  </div>
+  <p><strong>적용:</strong> 패키지의 <code>svg_mppi.yaml</code>, <code>svg_mppi_light.yaml</code> 모두 <code>svg_mppi.lambda: 1.0</code>으로 바꾸고 [변경 11/19] 표시를 남겼습니다. 공식 solver 코드는 그대로입니다.</p>
+</section>
+
+<section id="guide">
+  <h2>2. 연속 장애물 — 가이드 기준 경로 (교수님 과제)</h2>
+  <p>공식 solver는 guide 입자의 초기 방향을 바꾸는 API가 없습니다. 그래서 solver는 그대로 두고, solver가 따라가는 <strong>기준 경로 지도(reference SDF)를 장애물 열 전체를 보고 미리 옮겨 주는</strong> 방식으로 구현했습니다.</p>
+  <ol>
+    <li>라이다 점 중 정적 지도 벽에서 떨어진 점 = 장애물. 같은 칸이 스캔 3번 이상 보여야 인정(오인식 0회 확인).</li>
+    <li>레이스라인 기준 Frenet 좌표(s, d)로 바꿔 앞쪽 6 m 안의 장애물 열을 한 번에 봅니다.</li>
+    <li>동적 계획법(DP)으로 "각 장애물을 어느 쪽으로 지나갈지" 순서를 한 번에 정합니다. 비용 = 레이스라인 이탈 + 가로 기울기 + 장애물·벽 여유 + 직전 계획 유지 + 한 번 정한 쪽 유지.</li>
+    <li>그만큼 옆으로 옮긴 레이스라인으로 기준 경로 지도를 만들면 SVG의 guide 입자와 샘플이 그 모드로 모입니다.</li>
+  </ol>
+  <p>장애물이 없으면 원래 레이스라인을 그대로 씁니다. <code>/drive</code>는 여전히 SVG-MPPI 하나만 냅니다. 켜고 끄기: <code>ros2 param set /svg_mppi guide.enable true</code></p>
+
+  <h3>결과: seed 5개 비교 (λ 1.0, 장애물 4개, 조건마다 240 s × 5 = 20분 주행, PC 한가할 때)</h3>
+  <p>"부풀림"은 충돌 지도에서 장애물·벽을 차 크기만큼 키우는 방식입니다. 공식(rigid)은 판단 시점 차 방향의 상자, 원형(circle)은 방향과 무관한 반지름 0.15 m입니다. seed = 2026, 11, 7, 42, 100.</p>
+  <div class="table-wrap">
+    <table id="guide-table">
+      <thead><tr><th>조건</th><th class="num">랩</th><th class="num">클린 랩</th><th class="num">장애물 충돌</th><th class="num">벽 충돌</th><th class="num">복구</th><th class="num">클린 평균</th></tr></thead>
+      <tbody>
+        <tr><td>A 기준 (guide 끔, 공식 부풀림)</td><td class="num">28</td><td class="num">22</td><td class="num">6</td><td class="num">28</td><td class="num">31</td><td class="num">16.11</td></tr>
+        <tr><td>B guide만</td><td class="num">39</td><td class="num">32</td><td class="num">5</td><td class="num">31</td><td class="num">26</td><td class="num">17.08</td></tr>
+        <tr class="hl"><td><strong>C 원형 0.15만</strong></td><td class="num">65</td><td class="num">60</td><td class="num">10</td><td class="num">1</td><td class="num">4</td><td class="num">16.24</td></tr>
+        <tr><td>D guide + 원형 0.15</td><td class="num">66</td><td class="num">56</td><td class="num">7</td><td class="num">9</td><td class="num">6</td><td class="num">16.61</td></tr>
+        <tr><td>E 원본 8000 + guide + 원형 0.15</td><td class="num">55</td><td class="num">42</td><td class="num">13</td><td class="num">23</td><td class="num">21</td><td class="num">16.68</td></tr>
+        <tr id="row-f"><td><strong>F D + 헤어핀에서만 guide 끔 (구간 표)</strong></td><td class="num">69</td><td class="num">63</td><td class="num">7</td><td class="num">2</td><td class="num">6</td><td class="num">16.42</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="lead" style="font-size:14px">복구 = 충돌하거나 15초 넘게 진행이 없을 때 실험 도구가 차를 장애물 너머로 옮긴 횟수(평가 때 사람이 하는 일). 같은 시간에 랩을 많이 돌수록 덜 갇혔다는 뜻입니다. 이전에 올린 seed 2개 표는 PC에서 게임이 함께 돌던 상태라 이 표로 대체합니다.</p>
+  <ul>
+    <li><strong>가장 큰 개선은 원형 0.15 부풀림입니다.</strong> 충돌 34 → 11회, 같은 시간 랩 수 28 → 65.</li>
+    <li><strong>guide의 추가 효과는 아직 입증되지 않았습니다.</strong> 원형 위에 켜면 장애물 충돌은 10 → 7로 줄지만 벽 충돌이 1 → 9로 늘었습니다.</li>
+    <li>실패 위치를 보면 둘의 약점이 다릅니다. guide를 끄면 seed 7의 빠른 구간(s ≈ 45~46.5, 오른쪽 큰 커브 끝)에서 같은 장애물에 6번 연속 부딪혔고, guide를 켜면 이 배치를 통과합니다. 반대로 guide를 켜면 충돌 16회 중 11회가 헤어핀(s 23~25.6)에서 납니다. 기준 경로를 바깥으로 옮기다 주머니 위쪽 벽에 닿습니다.</li>
+    <li>그래서 F 조건은 <code>param_scheduler.py</code>로 헤어핀(s 21.5~27)에서만 guide를 끕니다. 학습 B안(구간별 파라미터)의 첫 사례입니다. <strong>랩 수가 가장 많고(69) 충돌이 가장 적었습니다(9회).</strong> 헤어핀 벽 충돌이 사라졌고, seed 7의 빠른 구간 장애물도 14랩 모두 무충돌로 지나갔습니다.</li>
+    <li>다만 C와의 차이(충돌 11 대 9)는 seed 5개로는 우연일 수 있는 크기입니다. seed를 늘려 확인해야 합니다.</li>
+  </ul>
+  <p>재현: <code>run_exp.sh &lt;이름&gt; params=configs/x_r15.yaml sched=configs/sched_guide_off_hairpin.yaml obs=4 seed=&lt;seed&gt;</code> (x_r15 = light + λ 1.0 + guide 켬 + 원형 0.15)</p>
+
+  <h3>헤어핀 꼭짓점 장애물이 다음 핵심 과제</h3>
+  <p>seed 2026의 2랩째에는 장애물이 헤어핀 꼭짓점 바로 뒤(s = 24.6 m) 레이스라인 위에 놓입니다. 안쪽은 벽까지 0.46 m라 바깥(주머니 쪽)으로 돌아야 하는데, 충돌 지도가 장애물을 <strong>판단 시점의 차 방향 뒤쪽으로 0.47 m 늘려서</strong> 통로 입구를 통째로 막아 버립니다(충돌률 1.00). guide를 켜도 끄도 못 지나갑니다. 장애물이 랩마다 4개씩 무작위로 놓이므로, 균일 배치를 가정하면 이 구간(약 4 m)에 장애물이 걸리는 랩은 대략 3랩에 1번꼴로 예상됩니다.</p>
+  <figure>
+    <img src="img/dump_obstacle_hairpin.png" alt="헤어핀 꼭짓점 장애물 앞에서 solver가 본 상태 두 장면. 장애물 주변 충돌 지도가 차 쪽으로 길게 늘어나 통로를 막고, 두 장면의 기준 경로(빨강)가 장애물의 남쪽과 북쪽으로 서로 다르다." width="1040" height="520">
+    <figcaption>guide 켬, 꼭짓점 장애물 앞. 충돌률 1.00(모든 샘플 충돌). 두 주기 사이에 기준 경로가 남쪽→북쪽으로 바뀐 것도 보입니다. 이후 "한 번 정한 쪽 유지" 비용(<code>guide.w_side</code>)을 추가했습니다.</figcaption>
+  </figure>
+  <p>대응으로 방향과 무관한 원형 부풀림 옵션(<code>local_costmap.inflation_mode: circle</code>)을 추가했습니다(위 표).</p>
+
+  <h3>s 24.6 함정: 원형 반지름 0.15 m로 해결 (11/19 새벽)</h3>
+  <p>race_manager 기록상 이 장애물은 <code>RIGHT</code> 강제(바깥으로만 통과), severity 0.45 m, <strong>보이는 거리 2.8 m</strong>입니다. 헤어핀 안쪽에 가려 있다가 2.8 m 앞에서야 보입니다. 바깥으로 지나가는 길은 장애물 북쪽 약 0.5 m, 위쪽 벽 끝과 0.1~0.4 m 여유가 있어 물리적으로는 지나갈 수 있습니다. 문제는 충돌 지도의 부풀림이 이 여유보다 커서 좌회전 경로가 전부 충돌로 판정되는 것이었습니다.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>시도 (guide 켬, seed 2026, 150 s)</th><th class="num">함정 랩 충돌</th><th>결과</th></tr></thead>
+      <tbody>
+        <tr><td>원형 0.25 (기준)</td><td class="num">7</td><td><span class="tag bad">막힘</span></td></tr>
+        <tr><td>장애물 근처 속도 ×0.6</td><td class="num">7</td><td><span class="tag bad">막힘</span></td></tr>
+        <tr><td>guide 입자 1 → 3</td><td class="num">7</td><td><span class="tag bad">막힘</span> (계산 32 ms)</td></tr>
+        <tr><td>원형 0.30</td><td class="num">7</td><td><span class="tag bad">막힘</span></td></tr>
+        <tr><td>원형 0.20</td><td class="num">4</td><td><span class="tag warn">충돌 후 통과</span></td></tr>
+        <tr><td>원본 샘플 8000</td><td class="num">5</td><td><span class="tag warn">충돌 후 통과</span></td></tr>
+        <tr class="hl"><td><strong>원형 0.15</strong></td><td class="num">0</td><td><span class="tag good">17.4 s 무충돌 통과</span>, 8랩 전부 클린</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>반지름 0.15 m = 시뮬 차 반폭 0.10 m + 여유 5 cm입니다. 장애물 0개 조건에서도 9랩 전부 클린(평균 15.92 s)이라 벽을 스치는 문제는 없었습니다.</p>
+
+  <h3>샘플 3000 vs 원본 8000</h3>
+  <p>light 설정(3000)은 내 PC(i5-8500)에서 MPPI 한 주기를 25 ms(40 Hz) 안에 끝내려고 만든 것입니다. 원본(8000 + 기울기 추정 100 × 10회)은 계산량이 약 2.6배입니다. 같은 시간대에 GUI 없이 재 보면</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>설정</th><th class="num">계산 평균</th><th class="num">25 ms 초과</th><th class="num">실제 제어 주기</th><th class="num">장애물 0 클린 랩 평균</th></tr></thead>
+      <tbody>
+        <tr><td>light 3000, 4스레드</td><td class="num">20.6 ms</td><td class="num">13%</td><td class="num">≈40 Hz</td><td class="num">15.87 s</td></tr>
+        <tr><td>원본 8000, 6스레드</td><td class="num">45.6 ms</td><td class="num">100%</td><td class="num">≈22 Hz</td><td class="num">15.92 s</td></tr>
+        <tr><td>원본 8000, 4스레드</td><td class="num">42.2 ms</td><td class="num">100%</td><td class="num">≈24 Hz</td><td class="num">15.75 s</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>8000도 돌아가고 장애물이 없으면 랩타임 차이도 없습니다. 하지만 장애물이 있으면 계산이 55 ms(약 18 Hz)까지 늘어 반응이 늦어집니다. 아래 5-seed 비교의 E 조건이 원본 8000입니다. 평가 PC(8코어 16스레드)에서는 8000이 25 ms 안에 들어올 가능성이 있어, 거기서 다시 재야 합니다.</p>
+</section>
+
+<section id="learning">
+  <h2>3. 학습은 어떻게 할까</h2>
+  <p>A~C 안 모두 "학습"이라고 부를 수 있지만, 남은 4주와 시뮬 속도를 생각하면 범위를 정해야 합니다. 시뮬레이터는 0.01 s 벽시계 타이머로 돌아서 <strong>실시간보다 빠르게 돌릴 수 없고</strong>, 한 랩이 약 16 s라 1시간에 200랩 남짓입니다.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>안</th><th>판단</th><th>이유</th></tr></thead>
+      <tbody>
+        <tr><td>A. 고정 파라미터 튜닝</td><td><span class="tag good">채택</span></td><td>베이지안 최적화(Optuna)는 trial 결과로 대리 모델을 학습해 다음 값을 고르는 방식이라 학습으로 설명할 수 있고, 하룻밤 수백 trial이면 충분합니다. λ 발견처럼 효과가 큽니다.</td></tr>
+        <tr><td>B. 상황별 파라미터</td><td><span class="tag good">채택 (A와 합침)</span></td><td>맵이 고정이므로 "상황" = 트랙 구간(s) + 장애물 유무로 정의하면 깔끔합니다. 구간별 속도 배율과 장애물 모드 값을 A와 같은 방법으로 학습하고, 주행 중에는 그 표대로 자동 적용합니다.</td></tr>
+        <tr><td>C. 가이드 방향 학습</td><td><span class="tag warn">대체</span></td><td>방향 선택은 DP guide가 매 주기 최적으로 풀고, 학습은 guide의 가중치(여유 거리, 유지 비용)를 맞추는 데 씁니다. 방향 자체를 학습(모방/강화학습)하기에는 시뮬 횟수가 부족합니다.</td></tr>
+        <tr><td>D. 비용 가중치</td><td><span class="tag info">A에 포함</span></td><td>λ, q_dist 같은 solver 값도 탐색 공간에 넣을 수 있습니다(바뀔 때 solver 재생성).</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <h3>학습 절차 (준비된 도구)</h3>
+  <ol>
+    <li><strong>평가 PC 기준으로 고정할 것을 먼저 고정:</strong> 샘플 수, 스레드 수, λ = 1.0. 학습은 평가 PC와 같은 사양인 학교 PC에서 돌립니다.</li>
+    <li><strong>탐색 공간:</strong> <code>configs/tune_space.yaml</code>. 곡률로 나눈 5개 구간의 속도 배율, 장애물 근처 속도, guide 여유 거리·유지 비용 등 8개 값입니다.</li>
+    <li><strong>trial 하나:</strong> 시뮬을 계속 켜 둔 채 파라미터만 바꾸고, 다음 랩 경계부터 3랩을 달린 결과로 점수를 냅니다. 점수 = 평균 랩타임 + 5 × 충돌 + 10 × 복구.</li>
+    <li><strong>seed 분리:</strong> 학습용 seed와 검증용 seed를 따로 둡니다. 최종 표는 검증 seed 여러 개에서 다시 확인한 뒤 씁니다.</li>
+    <li><strong>결과:</strong> <code>tuning/&lt;이름&gt;_best_schedule.yaml</code>. 이 표를 <code>param_scheduler.py</code>에 넣으면 주행 중 자동 적용됩니다. 결과 DB(sqlite)는 파일이라 PC를 옮겨도 이어서 돌릴 수 있습니다.</li>
+  </ol>
+<pre><code># 컨테이너: 시뮬+MPPI+race_manager 를 길게 띄워 두고 (예: 3시간)
+bash ~/shared_dir/svg_mppi_exp/tools/run_exp.sh tune dur=10800 obs=4 seed=100 params=&lt;설정.yaml&gt;
+# 다른 컨테이너 터미널: optuna 는 별도 venv (ROS의 numpy 를 건드리지 않게)
+python3 -m venv --system-site-packages ~/shared_dir/svg_mppi_exp/venv
+~/shared_dir/svg_mppi_exp/venv/bin/pip install optuna
+~/shared_dir/svg_mppi_exp/venv/bin/python ~/shared_dir/svg_mppi_exp/tools/tune.py \
+    --space ~/shared_dir/svg_mppi_exp/configs/tune_space.yaml --log-dir &lt;run_exp 의 OUT 폴더&gt; --trials 60</code></pre>
+  <p class="lead" style="font-size:14px">tune.py와 param_scheduler.py는 작성만 했고 실제 학습은 아직 돌리지 않았습니다. 구간별 속도 변경(param_scheduler)은 실험에서 동작을 확인했습니다.</p>
+</section>
+
+<section id="live">
+  <h2>4. 주행 중 파라미터 변경은 어떤 개념인가</h2>
+  <p>두 가지를 구분하면 됩니다.</p>
+  <ul>
+    <li><strong>학습</strong>은 평가 전에 시뮬에서 미리 합니다(오프라인). 결과물은 "상황 → 파라미터" 표 하나입니다.</li>
+    <li><strong>주행 중 변경</strong>은 그 표를 보고 <code>param_scheduler.py</code>가 구간이 바뀌거나 장애물이 보일 때 자동으로 파라미터를 넣는 것입니다. 주행하면서 새로 학습하는 온라인 학습은 아닙니다. 평가 중에 모델이 바뀌면 위험하고 재현도 안 됩니다.</li>
+  </ul>
+  <p>평가 시연용으로 사람이 직접 바꾸는 것도 됩니다. 노드 쪽 값(속도 배율, guide.*)은 다음 주기부터 바로 반영됩니다. solver 값(λ, 공분산, 샘플 수, 예측 구간)은 새 solver를 백그라운드에서 만든 뒤 제어 주기 사이에 교체합니다(solver는 항상 1개, 교체 순간 웜스타트 초기화).</p>
+<pre><code>ros2 param set /svg_mppi reference_sdf.reference_speed_scale 1.2   # 전체 속도 +20%
+ros2 param set /svg_mppi svg_mppi.lambda 1.0                        # 로그: "new solver built ..." → "solver swapped"
+ros2 param set /svg_mppi guide.enable true</code></pre>
+</section>
+
+<section id="gui">
+  <h2>5. GUI 없이 돌린 결과와 GUI를 띄운 결과의 차이</h2>
+  <p id="gui-text">물리와 판정은 같습니다. 시뮬레이터, 충돌 판정, 랩 계측은 GUI와 무관하게 같은 코드로 돌고, 전광판도 같은 JSON에서 그립니다. 차이는 CPU입니다. RViz는 시작할 때 코어 하나 가까이를 쓰고 이후에도 계속 일부를 씁니다. 그만큼 MPPI 계산 시간이 늘고 25 ms 주기를 넘기는 비율이 올라가서, 같은 설정이라도 결과가 달라질 수 있습니다.</p>
+  <p>얼마나 민감한지는 이번에 우연히 확인됐습니다. PC에서 다른 프로그램이 함께 돌자 같은 설정의 계산 시간이 평균 20 ms → 49 ms, 클린 랩 평균이 15.9 s → 17.8 s가 됐습니다. 내 PC(6코어)에서는 GUI 유무나 다른 프로그램이 결과를 바꿀 수 있으니, <strong>비교 실험은 GUI 없이 PC가 한가할 때</strong> 돌리고, 평가 직전 확인은 평가 PC에서 GUI를 켠 상태로 하는 것이 맞습니다. 평가 PC(8코어 16스레드)에서는 차이가 작을 것으로 예상합니다.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>같은 설정, 장애물 0, 150 s</th><th class="num">계산 평균</th><th class="num">상위 5%</th><th class="num">25 ms 초과</th><th class="num">클린 랩 평균</th></tr></thead>
+      <tbody>
+        <tr><td>GUI 없음</td><td class="num">19.8 ms</td><td class="num">28.6 ms</td><td class="num">11%</td><td class="num">15.80 s</td></tr>
+        <tr><td>GUI (RViz + 전광판 창)</td><td class="num">23.5 ms</td><td class="num">32.4 ms</td><td class="num">31%</td><td class="num">15.77 s</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>GUI를 켜면 계산이 약 4 ms 늘고 주기를 넘기는 비율은 3배가 되지만, 장애물이 없으면 랩타임은 같았습니다. 장애물 회피처럼 빠른 반응이 필요한 상황에서는 차이가 날 수 있어, 비교 실험은 GUI 없이 돌립니다.</p>
+</section>
+
+<section id="scoreboard">
+  <h2>6. 전광판</h2>
+  <p>race_manager가 실행마다 결과를 JSON으로 쌓고 <code>ros2 run race_manager report --no-show</code>로 평가 때와 같은 전광판 PNG를 만듭니다. 실험 도구(<code>run_exp.sh</code>)가 실행이 끝날 때마다 이것을 자동으로 만들어서, 실험 하나가 끝나면 전광판 그림으로 보고합니다(위 1번의 두 그림).</p>
+</section>
+
+<section id="next">
+  <h2>7. 다음 할 일과 팀 결정</h2>
+  <ul>
+    <li><span class="tag good">완료</span> 원형 0.15 부풀림을 패키지 기본값으로 변경(설정 파일 두 개 + 노드 기본값). 시작 로그에 <code>inflation=circle r=0.15</code>로 표시됩니다.</li>
+    <li>위쪽 직선 s 35~37의 시케인 쌍: 기본값 확인 실행에서 같은 장애물에 3회 충돌(이전 같은 seed 실행은 무충돌). 확률적으로 실패하는 배치라 다음 개선 후보입니다.</li>
+    <li>guide: 구간 표(F) 결과를 보고 헤어핀 처리 방식 결정, 그다음 guide 가중치를 학습 대상에 넣기.</li>
+    <li>seed 7의 s ≈ 45~46.5 빠른 구간 장애물(guide 끄면 반복 충돌) 분석.</li>
+    <li>학교 PC(평가 PC와 같은 사양)에서 원본 설정(샘플 8000) + λ 1.0으로 계산 시간과 주머니 문제 재확인.</li>
+    <li>학습(A+B) 첫 실행: 학교 PC에서 하룻밤.</li>
+  </ul>
+  <div class="decide">
+    <h3>팀이 정해야 할 것</h3>
+    <ul>
+      <li><strong>guide가 "planner를 하나 더 둔 것"으로 보일 수 있는지</strong> 교수님께 확인이 필요합니다. 기준 경로만 바꾸고 <code>/drive</code>는 SVG-MPPI 하나이지만, 장애물 회피 순서를 정하는 상위 단계이긴 합니다.</li>
+      <li>학습 범위를 A+B(구간별 파라미터)로 확정할지.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="files">
+  <h2>파일 위치</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>위치 (WSL <code>~/shared_dir</code> = 컨테이너 <code>~/shared_dir</code>)</th><th>내용</th></tr></thead>
+      <tbody>
+        <tr><td><code>svg_mppi/</code></td><td>연결 노드 패키지 (원본 사본은 <code>svg_mppi_exp/backup_*</code>). 컨테이너 <code>~/forza_ws/race_stack/svg_mppi</code>에 복사해 빌드</td></tr>
+        <tr><td><code>svg_mppi_exp/tools/</code></td><td>run_exp.sh(실험 1회), batch2.sh, exp_monitor.py(기록·자동 복구), param_scheduler.py, tune.py</td></tr>
+        <tr><td><code>svg_mppi_exp/analysis/</code></td><td>summarize.py(요약 표), trace_plot.py, flip_plot.py(진단 기록 그림), hairpin_overlay.py 등</td></tr>
+        <tr><td><code>svg_mppi_exp/runs/</code></td><td>실행별 전광판 PNG/JSON, trace.csv, 로그</td></tr>
+        <tr><td><code>svg_mppi_exp/configs/</code></td><td>실험 조건별 yaml, tune_space.yaml, schedule_example.yaml</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+</main>

@@ -1,0 +1,11 @@
+<launch>
+    <!-- SVG-MPPI controller (official kohonda/proj-svg_mppi solver): /scan + /car_state/odom + /global_waypoints_scaled -> /drive
+         usage: ros2 launch svg_mppi svg_mppi_launch.xml [mpc_mode:=svg_mppi|forward_mppi] [params:=<yaml>] -->
+    <arg name="mpc_mode" default="svg_mppi"/>
+    <arg name="params" default="$(find-pkg-share svg_mppi)/config/svg_mppi.yaml"/>
+    <node pkg="svg_mppi" exec="svg_mppi_node" name="svg_mppi" output="screen">
+        <param from="$(var params)"/>
+        <param name="mpc_mode" value="$(var mpc_mode)"/>
+        <param name="drive_publish_enabled" value="true"/>
+    </node>
+</launch>

@@ -1,0 +1,104 @@
+# SVG-MPPI parameters
+# 값은 공식 저장소(kohonda/proj-svg_mppi) 설정 파일 그대로입니다.
+#   mppi_controller.yaml / reference_sdf_generator.yaml / local_costmap_generator_simulation.yaml
+# 공식 값과 다르게 둔 곳은 [변경] 표시.
+# *** LIGHT 버전: CPU가 부족할 때(시뮬·RViz와 같이 돌릴 때) 계산량을 줄인 설정. [가벼움] 표시 ***
+svg_mppi:
+  ros__parameters:
+    # ---------- race stack I/O (TLN과 같은 /scan -> /drive) ----------
+    scan_topic: /scan
+    odom_topic: /car_state/odom                 # pose_source:=gt|pf 에 따라 자동
+    waypoints_topic: /global_waypoints_scaled   # speed_scaling.yaml(global_limit) 반영된 레이스라인
+    drive_topic: /drive
+    map_frame_id: map
+    robot_frame_id: ""                 # 비우면 /car_state/odom 의 child_frame_id 사용 (우리 스택: car_state/base_link)
+    drive_publish_enabled: true
+    laser_offset_x: 0.275          # TF(base_link<-laser)를 못 찾을 때만 사용
+    visualize_candidates: false    # true: 샘플 궤적 100개를 /mppi/candidate_paths 로 표시 (계산 시간 증가)
+    publish_costmap_every: 0       # [가벼움] 끔
+
+    # ---------- mppi_controller.yaml ----------
+    control_sampling_time: 0.025   # 40 Hz
+    constant_speed_mode: false     # false: 속도 = 레이스라인 속도(배율 적용), true: reference_speed 고정
+    reference_speed: 1.5
+    steer_1st_delay: 0.1
+    mpc_mode: svg_mppi             # svg_mppi | forward_mppi | reverse_mppi | sv_mpc
+
+    common:
+      thread_num: 4                # [가벼움] 6코어 중 2개는 시뮬레이터·RViz용으로 남김
+      prediction_step_size: 15     # 15 x 0.05 s = 0.75 s 앞까지 예측
+      prediction_interval: 0.08
+      steer_delay: 0.025
+      max_steer_angle: 0.45
+      min_steer_angle: -0.45
+      speed_prediction_mode: reference
+      max_accel: 5.0
+      min_accel: -3.0
+      lr: 0.135
+      lf: 0.189
+      collision_weight: 1.0
+      q_dist: 1.0
+      q_angle: 0.01
+      q_terminal_dist: 1.0
+      q_terminal_angle: 0.01
+
+    forward_mppi:
+      sample_batch_num: 10000
+      lambda: 3.0
+      alpha: 0.1
+      non_biased_sampling_rate: 0.1
+      steer_cov: 0.1
+      num_itr_for_grad_estimation: 0
+      step_size_for_grad_estimation: 0.001
+      sample_num_for_grad_estimation: 5
+      steer_cov_for_grad_estimation: 0.001
+
+    svg_mppi:
+      sample_batch_num: 3000       # [가벼움] 공식 8000
+      lambda: 3.0
+      non_biased_sampling_rate: 0.1
+      alpha: 0.1
+      steer_cov: 0.01
+      guide_sample_num: 1          # 가이드 입자 수 (교수님 피드백: 연속 장애물에서 핵심)
+      grad_lambda: 3.0
+      sample_num_for_grad_estimation: 50   # [가벼움] 공식 100
+      steer_cov_for_grad_estimation: 0.01
+      svgd_step_size: 0.005
+      num_svgd_iteration: 10
+      is_use_nominal_solution: true
+      is_covariance_adaptation: true
+      gaussian_fitting_lambda: 0.1
+      min_steer_cov: 0.001
+      max_steer_cov: 0.1
+
+    # ---------- reference_sdf_generator.yaml ----------
+    reference_sdf:
+      num_waypoints: 80            # 0.1 m 간격 x 80 = 앞쪽 8 m 레이스라인 사용
+      backward_margin_num: 0
+      waypoint_interval: 0.1
+      # [추가] 최근접 waypoint 검색: false = 공식 코드(전체 경로 검색), true = 직전 위치 주변만 검색
+      #        실행 중 변경 가능: ros2 param set /svg_mppi reference_sdf.local_search true
+      local_search: false
+      local_search_back_num: 10     # 뒤로 1 m
+      local_search_forward_num: 40  # 앞으로 4 m
+      jump_warn_num: 30             # 최근접 인덱스가 3 m 넘게 튀면 "reference jump" 경고
+      ref_path_map_resolution: 0.1
+      ref_path_map_width: 12.0     # [가벼움] 공식 20 (앞뒤 6 m면 0.75 s 예측에 충분)
+      ref_path_map_height: 12.0
+      reference_speed_scale: 1.0   # 배율은 speed_scaling.yaml(global_limit)에서 이미 적용됨
+      max_speed: 100.0
+      update_rate: 0.025           # 레이스라인 지도 갱신 주기 [s] (공식과 같이 제어와 별도 스레드)
+
+    # ---------- local_costmap_generator_simulation.yaml ----------
+    local_costmap:
+      is_crop_robot: true
+      baselink2front: 0.47
+      baselink2rear: 0.14
+      baselink2right: 0.15
+      baselink2left: 0.15
+      map_x_length: 10.0
+      map_y_length: 10.0
+      map_center_offset_x: 3.0     # 차 앞쪽 3 m가 지도 중심
+      map_center_offset_y: 0.0
+      map_resolution: 0.05
+      max_val: 100.0

@@ -1,0 +1,8 @@
+# param_scheduler.py 표 예시. tune.py 가 만든 *_best_schedule.yaml 도 같은 형식.
+default:
+  guide.enable: true
+  reference_sdf.reference_speed_scale: 1.0
+sectors:
+  - {name: s_hairpin, s: [21.0, 30.0], params: {reference_sdf.reference_speed_scale: 0.85}}
+obstacle:
+  guide.speed_scale: 0.85

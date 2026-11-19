@@ -1,0 +1,5 @@
+# guide 는 켜 두고 헤어핀(s 21.5~27)에서만 끔 (헤어핀에서는 바깥으로 옮긴 기준 경로가 주머니 벽에 닿음)
+default:
+  guide.enable: true
+sectors:
+  - {name: s_hairpin, s: [21.5, 27.0], params: {guide.enable: false}}

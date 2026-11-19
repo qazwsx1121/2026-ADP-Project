@@ -1,0 +1,41 @@
+# tune.py 탐색 공간 (berlin). 구간은 레이스라인 s [m] 기준, 곡률과 장애물 후보 난이도로 나눔.
+#   main_straight 0-5   : 출발 직선 (vx 10 m/s 구간, 장애물 후보 거의 없음)
+#   bottom_turn   5-12  : 아래 헤어핀 (R 1.3 m), 어렵고 늦게 보이는 후보 21개
+#   back_straight 12-21 : 위로 올라가는 직선, 한쪽 강제 어려운 후보 많음
+#   s_hairpin     21-30 : 왼쪽 위 S자 헤어핀 (R 0.95 m), 어렵고 늦게 보이는 후보 58개 (가장 위험)
+#   sweep         30-49 : 오른쪽 큰 커브 + 직선, 넓어서 어려운 후보 거의 없음
+# 고정값(fixed, sectors 의 params)은 학습하지 않음. 11/19 seed 5개 비교에서 가장 좋았던 구성
+# (guide 켬 + 헤어핀에서만 guide 끔, 원형 0.15 부풀림은 패키지 기본값) 을 출발점으로 둔다.
+sectors:
+  - {name: main_straight, s: [0.0, 5.0]}
+  - {name: bottom_turn, s: [5.0, 12.0]}
+  - {name: back_straight, s: [12.0, 21.0]}
+  - {name: s_hairpin, s: [21.0, 30.0], params: {guide.enable: false}}
+  - {name: sweep, s: [30.0, 49.0]}
+fixed:
+  default: {guide.enable: true}
+# "<구간 이름 | default | obstacle>.<svg_mppi 파라미터>": [최소, 최대(, log)]
+#   reference_sdf.reference_speed_scale = speed_scaling(0.5) 이 적용된 레이스라인 속도에 곱하는 배율
+#   obstacle.* = 가이드가 장애물을 피하는 중일 때만 덮어쓰는 값
+#   default.svg_mppi.lambda 는 solver 파라미터라 trial 시작 때 solver 를 한 번 새로 만든다
+space:
+  main_straight.reference_sdf.reference_speed_scale: [0.8, 1.6]
+  bottom_turn.reference_sdf.reference_speed_scale: [0.7, 1.3]
+  back_straight.reference_sdf.reference_speed_scale: [0.8, 1.6]
+  s_hairpin.reference_sdf.reference_speed_scale: [0.6, 1.2]
+  sweep.reference_sdf.reference_speed_scale: [0.8, 1.6]
+  obstacle.guide.speed_scale: [0.6, 1.0]
+  default.guide.obs_clear_d: [0.35, 0.6]
+  default.guide.w_prev: [0.5, 6.0]
+  default.svg_mppi.lambda: [0.5, 2.0, log]
+# 첫 trial 은 현재 최고 설정 그대로 (비교 기준)
+baseline:
+  main_straight.reference_sdf.reference_speed_scale: 1.0
+  bottom_turn.reference_sdf.reference_speed_scale: 1.0
+  back_straight.reference_sdf.reference_speed_scale: 1.0
+  s_hairpin.reference_sdf.reference_speed_scale: 1.0
+  sweep.reference_sdf.reference_speed_scale: 1.0
+  obstacle.guide.speed_scale: 1.0
+  default.guide.obs_clear_d: 0.45
+  default.guide.w_prev: 2.0
+  default.svg_mppi.lambda: 1.0
