@@ -1,8 +1,8 @@
 #!/bin/bash
 # 실험 1회 실행 (컨테이너 안에서): 시뮬 + svg_mppi + race_manager + 기록/복구 -> DUR 초 후 종료 -> 전광판 PNG
 #
-# 사용 (WSL에서):
-#   docker exec exciting_rhodes bash /home/misys/shared_dir/svg_mppi_exp/tools/run_exp.sh <tag> [key=value ...]
+# 사용 (컨테이너 터미널, misys@):
+#   bash ~/shared_dir/svg_mppi_exp/tools/run_exp.sh <tag> [key=value ...]
 # key:
 #   dur=120            주행 시간 [s] (svg_mppi 가 /drive 를 내기 시작한 뒤부터)
 #   params=<yaml>      svg_mppi 파라미터 파일 (기본: 패키지 svg_mppi_light.yaml)

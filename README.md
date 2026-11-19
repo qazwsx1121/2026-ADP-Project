@@ -23,29 +23,32 @@ ForzaETH race stack(ROS 2 Humble)의 PP/TLN 컨트롤러를 **SVG-MPPI**(Honda e
 | [`svg_mppi_exp/analysis/`](svg_mppi_exp/analysis/) | 결과 요약·그래프 스크립트 |
 | [`svg_mppi_exp/report/`](svg_mppi_exp/report/) | 실험 보고서 (`index.html`, 그림) |
 | `svg_mppi_exp/pylib/` | Optuna 등 파이썬 라이브러리 (컨테이너에 pip 없이 쓰기 위해 포함) |
+| [`apply_to_pc.sh`](apply_to_pc.sh) | 저장소 내용을 이 PC(컨테이너)에 적용: 코드 갱신 + 빌드, 실험·학습 결과는 보존 |
 | [`학교PC_시작하기.md`](학교PC_시작하기.md) | 학교 PC에서 세팅 → 학습 → 검증까지 단계별 안내 |
 | [`학교PC_노이즈실험.md`](학교PC_노이즈실험.md) | 평가 때 장애물 노이즈 대비: 노이즈 실험, 노이즈를 켠 학습·검증 |
 
 ## 시작하기
 
-수업용 Docker 컨테이너(이미지 `misys:forza_full`) 안에서 실행합니다. 도구들이 `~/shared_dir` 아래 경로를 쓰므로 그 위치에 맞춰 둡니다.
+수업용 Docker 컨테이너(이미지 `misys:forza_full`) 안에서 실행합니다. 호스트가 우분투든 WSL이든, 실행은 컨테이너 안에서 하므로 같습니다. 도구들은 컨테이너의 `~/shared_dir`(호스트와 공유되는 폴더)과 `~/forza_ws/race_stack`을 씁니다.
 
 ```bash
-# [컨테이너]
+# [컨테이너] 처음 한 번
 cd ~/shared_dir && git clone https://github.com/qazwsx1121/2026-ADP-Project.git
-ln -s ~/shared_dir/2026-ADP-Project/proj-svg_mppi ~/shared_dir/proj-svg_mppi
-ln -s ~/shared_dir/2026-ADP-Project/svg_mppi_exp  ~/shared_dir/svg_mppi_exp
-chmod +x ~/shared_dir/svg_mppi_exp/tools/*.sh
+bash ~/shared_dir/2026-ADP-Project/apply_to_pc.sh
 
-# 빌드 (svg_mppi는 반드시 race_stack 바로 아래)
-source /opt/ros/humble/setup.bash
-source ~/forza_ws/race_stack/install/setup.bash
-cp -r ~/shared_dir/2026-ADP-Project/svg_mppi ~/forza_ws/race_stack/
-cd ~/forza_ws/race_stack && colcon build --packages-select svg_mppi && source install/setup.bash
+# [컨테이너] 저장소가 바뀌었을 때
+cd ~/shared_dir/2026-ADP-Project && git pull
+bash ~/shared_dir/2026-ADP-Project/apply_to_pc.sh
 ```
 
-- 이미 `~/shared_dir/proj-svg_mppi`나 `svg_mppi_exp` 폴더가 있으면, 링크를 만들기 전에 이름을 바꾸거나 옮겨 두세요.
-- 새 터미널마다 위의 `source` 두 줄이 필요합니다. `~/.bashrc`에 추가해 두면 편합니다.
+`apply_to_pc.sh`가 하는 일:
+1. `~/shared_dir/svg_mppi_exp`의 코드 폴더(`tools`, `configs`, `analysis`, `report`, `pylib`)와 안내서를 저장소 것으로 갱신합니다. **`runs/`, `tuning/` 같은 실험·학습 결과는 건드리지 않습니다.**
+2. `~/shared_dir/proj-svg_mppi`(공식 코드)를 갱신합니다.
+3. `~/forza_ws/race_stack/svg_mppi`를 저장소 것으로 바꾸고(기존 것은 `svg_mppi_exp/backup/`에 보관) 빌드합니다.
+
+- 학습이나 실험이 돌고 있으면 아무것도 바꾸지 않고 멈춥니다(실행 중인 스크립트를 덮어쓰면 그 실행이 깨지기 때문).
+- `git clone`은 호스트에서 해도 됩니다. 호스트의 공유 폴더(우분투 `dkrun.sh` 기준 `~/shared_dir`)에 받으면 컨테이너에서도 보입니다.
+- 새 터미널마다 `source /opt/ros/humble/setup.bash`, `source ~/forza_ws/race_stack/install/setup.bash`가 필요합니다. `~/.bashrc`에 추가해 두면 편합니다.
 
 ### 주행 (터미널 3개)
 

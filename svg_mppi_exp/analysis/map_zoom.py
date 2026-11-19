@@ -1,7 +1,7 @@
-import sys, numpy as np, yaml, matplotlib
+import os, sys, numpy as np, yaml, matplotlib
 matplotlib.use("Agg"); import matplotlib.pyplot as plt
 from PIL import Image
-D="/home/misys/forza_ws/race_stack/stack_master/maps/berlin/"
+D=os.path.expanduser("~/forza_ws/race_stack/stack_master/maps/berlin/")
 m=yaml.safe_load(open(D+"berlin.yaml")); img=np.array(Image.open(D+m["image"]).convert("L"))
 H,W=img.shape; r=m["resolution"]; o=m["origin"]; ext=[o[0],o[0]+W*r,o[1],o[1]+H*r]
 pts=[tuple(map(float,p.split(","))) for p in sys.argv[2:]]

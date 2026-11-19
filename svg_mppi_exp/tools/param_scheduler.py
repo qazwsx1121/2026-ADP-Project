@@ -7,7 +7,7 @@
 표의 값은 사람이 정해도 되고, tune.py(Optuna)로 학습한 결과(best_schedule.yaml)를 그대로 넣어도 된다.
 
 사용 (컨테이너):
-  python3 param_scheduler.py --ros-args -p table:=/home/misys/shared_dir/svg_mppi_exp/configs/schedule_example.yaml
+  python3 param_scheduler.py --ros-args -p table:=$HOME/shared_dir/svg_mppi_exp/configs/schedule_example.yaml
 
 표 형식:
   default:  {reference_sdf.reference_speed_scale: 1.0}
