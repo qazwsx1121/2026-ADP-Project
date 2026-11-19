@@ -1,0 +1,9 @@
+# 실험 결과와 자동 생성 파일은 올리지 않음 (크고, 다시 만들 수 있음)
+svg_mppi_exp/runs/
+svg_mppi_exp/configs/generated/
+svg_mppi_exp/analysis/out/
+svg_mppi_exp/backup/
+svg_mppi_exp/backup_*/
+__pycache__/
+*.pyc
+*.zip

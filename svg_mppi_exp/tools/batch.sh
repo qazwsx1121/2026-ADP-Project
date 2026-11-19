@@ -4,6 +4,6 @@ DUR=$1; shift
 for spec in "$@"; do
   tag=${spec%%:*}; rest=${spec#*:}; yaml=${rest%%:*}; extra=""
   [ "$rest" != "$yaml" ] && extra=$(echo ${rest#*:} | tr ',' ' ')
-  bash /home/misys/shared_dir/svg_mppi_exp/tools/run_exp.sh $tag dur=$DUR params=/home/misys/shared_dir/svg_mppi_exp/configs/$yaml $extra 2>&1 | tail -5
+  bash $HOME/shared_dir/svg_mppi_exp/tools/run_exp.sh $tag dur=$DUR params=$HOME/shared_dir/svg_mppi_exp/configs/$yaml $extra 2>&1 | tail -5
   echo "-----"
 done

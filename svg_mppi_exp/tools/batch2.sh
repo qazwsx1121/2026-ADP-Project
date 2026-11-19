@@ -4,6 +4,6 @@ DUR=$1; shift
 for spec in "$@"; do
   set -- $spec
   tag=$1; shift
-  bash /home/misys/shared_dir/svg_mppi_exp/tools/run_exp.sh $tag dur=$DUR "$@" 2>&1 | tail -5
+  bash $HOME/shared_dir/svg_mppi_exp/tools/run_exp.sh $tag dur=$DUR "$@" 2>&1 | tail -5
   echo "-----"
 done

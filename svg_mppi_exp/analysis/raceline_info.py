@@ -1,5 +1,5 @@
-import json, sys
-d = json.load(open("/home/misys/forza_ws/race_stack/stack_master/maps/berlin/global_waypoints.json"))
+import json, os, sys
+d = json.load(open(os.path.expanduser("~/forza_ws/race_stack/stack_master/maps/berlin/global_waypoints.json")))
 w = d["global_traj_wpnts_iqp"]["wpnts"]
 lo, hi = float(sys.argv[1]), float(sys.argv[2])
 for p in w:
