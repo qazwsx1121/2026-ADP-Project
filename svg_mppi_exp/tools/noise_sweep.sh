@@ -10,6 +10,7 @@
 #   dur=240                    실행 1회 주행 시간 [s]
 #   tag=ns                     결과 폴더 이름 앞부분
 #   base=<yaml>                C/F/CF/FF 를 만들 기본 설정 (학교 PC: 5번에서 고른 school_*.yaml, 기본: 패키지 light)
+#   pose=pf                    pf(기본) | gt
 # 예상 시간 = cfgs 수 x levels 수 x seeds 수 x 4.5 분  (기본 2 x 3 x 5 = 30회 ≈ 2시간 15분)
 #
 # 설정:  C  = 원형 0.15, guide 끔 (패키지 기본값)
@@ -22,7 +23,7 @@
 #        N4 = N2 + N3
 # 결과 폴더: runs/*_<tag><설정><노이즈>_s<seed>, 마지막에 group_summary 표
 
-cfgs="F FF"; levels="N2 N3 N4"; seeds="2026 11 7 42 5"; dur=240; tag=ns; base=""
+cfgs="F FF"; levels="N2 N3 N4"; seeds="2026 11 7 42 5"; dur=240; tag=ns; base=""; pose=pf
 for kv in "$@"; do printf -v "${kv%%=*}" '%s' "${kv#*=}"; done
 EXP=~/shared_dir/svg_mppi_exp
 C=$EXP/configs
@@ -73,7 +74,7 @@ for s in $seeds; do
     for l in $levels; do
       n=$((n + 1)); g=${tag}${c}${l}
       echo "[$n/$total] $g seed $s  ($(date +%H:%M))"
-      bash $EXP/tools/run_exp.sh ${g}_s$s dur=$dur obs=4 seed=$s nseed=$s $(cfg_args $c) $(noise_args $l) | grep -E "laps=|ERROR"
+      bash $EXP/tools/run_exp.sh ${g}_s$s dur=$dur obs=4 seed=$s nseed=$s pose=$pose $(cfg_args $c) $(noise_args $l) | grep -E "laps=|ERROR"
     done
   done
 done

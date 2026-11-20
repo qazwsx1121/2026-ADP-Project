@@ -13,14 +13,14 @@
 #   set="a:=1 b:=2"    시작 후 ros2 param set /svg_mppi 로 바꿀 값 (공백 구분, 이름:=값)
 #   sched=<yaml>       param_scheduler.py 표 (구간/장애물별 파라미터 자동 변경)
 #   debug=1            조향이 뒤집히는 순간 solver 상태를 OUT/flip_*.json 으로 저장
-#   pose=gt            차량 위치 소스: gt(시뮬 정답) | pf(particle filter, 최종 평가 권장). pf면 시작 때 /initialpose 로 측위 초기화
+#   pose=pf            차량 위치 소스: pf(particle filter, 기본, 최종 평가와 같음) | gt(시뮬 정답, 11/20 이전 결과와 비교할 때). pf면 시작 때 /initialpose 로 측위 초기화
 #   [장애물 노이즈] onoise=0.10 위치 σ[m]  orot=1 회전 무작위  odyn=0.02 매초 추가로 흔듦[m]  nseed=0
 #   [라이다 노이즈] snoise=0.03 거리 σ[m]  sdrop=0.02 빔 누락 확률  sghost=0.005 허상 점 확률 (컨트롤러만 봄)
 # 결과: ~/shared_dir/svg_mppi_exp/runs/<날짜_시간>_<tag>/  (race_result_*.json/png, trace.csv, events.csv, *.log)
 
 TAG=${1:-run}; shift
 dur=120; params=""; mode=svg_mppi; obs=0; seed=2026; gui=0; recover=1; set=""; sched=""; debug=0
-onoise=0; orot=0; odyn=0; nseed=0; snoise=0; sdrop=0; sghost=0; pose=gt
+onoise=0; orot=0; odyn=0; nseed=0; snoise=0; sdrop=0; sghost=0; pose=pf
 for kv in "$@"; do printf -v "${kv%%=*}" '%s' "${kv#*=}"; done   # key=value (값에 공백이 있어도 됨)
 
 source /opt/ros/humble/setup.bash

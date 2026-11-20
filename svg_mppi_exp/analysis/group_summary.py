@@ -19,14 +19,14 @@ def main():
     ap.add_argument("groups", nargs="+")
     ap.add_argument("--runs", default=os.path.expanduser("~/shared_dir/svg_mppi_exp/runs"))
     a = ap.parse_args()
-    print("group | seeds | laps | clean | clean% | obs_hits | wall_hits | recovers | clean_mean | best | calc_mean | per-seed (laps/clean/hits)")
+    print("group | seeds | laps | clean | clean% | obs_hits | wall_hits | recovers | clean_mean | best | calc_mean | loc_err | per-seed (laps/clean/hits)")
     for g in a.groups:
         runs = sorted(d for d in glob.glob(os.path.join(a.runs, f"*_{g}_s*")) if glob.glob(os.path.join(d, "race_result_*.png")))
         if not runs:
             print(f"{g} | 0")
             continue
         tot = dict(laps=0, clean_laps=0, obs_hits=0, wall_hits=0, teleports=0)
-        clean_times, best, calc, per = [], [], [], []
+        clean_times, best, calc, per, loc = [], [], [], [], []
         for r in runs:
             o = summarize(r)
             for k in tot:
@@ -38,13 +38,16 @@ def main():
                 best.append(o["best"])
             if o.get("calc_mean"):
                 calc.append(o["calc_mean"])
+            if o.get("loc_mean") is not None:
+                loc.append(o["loc_mean"])
             seed = re.search(r"_s(\d+)$", r).group(1)
             per.append(f"s{seed}:{o.get('laps')}/{o.get('clean_laps')}/{o.get('hits')}")
         cm = sum(clean_times) / len(clean_times) if clean_times else float("nan")
         pct = 100.0 * tot["clean_laps"] / tot["laps"] if tot["laps"] else 0.0
         print(f"{g} | {len(runs)} | {tot['laps']} | {tot['clean_laps']} | {pct:.0f}% | {tot['obs_hits']} | {tot['wall_hits']} | "
               f"{tot['teleports']} | {cm:.2f} | {min(best) if best else float('nan'):.2f} | "
-              f"{sum(calc) / len(calc) if calc else float('nan'):.1f} | {' '.join(per)}")
+              f"{sum(calc) / len(calc) if calc else float('nan'):.1f} | "
+              f"{(sum(loc) / len(loc)) if loc else float('nan'):.3f} | {' '.join(per)}")
 
 
 if __name__ == "__main__":

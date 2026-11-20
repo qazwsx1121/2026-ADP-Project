@@ -52,7 +52,8 @@ class ExpMonitor(Node):
         self.trace = open(os.path.join(self.out_dir, "trace.csv"), "w", newline="")
         self.tw = csv.writer(self.trace)
         self.tw.writerow(["t", "x", "y", "yaw", "v", "steer_cmd", "speed_cmd", "calc_ms", "coll_rate", "cost",
-                          "collision", "idx", "s", "d", "best_end_x", "best_end_y", "guide_offset"])
+                          "collision", "idx", "s", "d", "best_end_x", "best_end_y", "guide_offset",
+                          "est_x", "est_y", "est_yaw", "loc_err", "loc_yaw_err"])
         self.events = open(os.path.join(self.out_dir, "events.csv"), "w", newline="")
         self.ew = csv.writer(self.events)
         self.ew.writerow(["t", "event", "x", "y", "s", "info"])
@@ -68,9 +69,11 @@ class ExpMonitor(Node):
         self.cooldown_until = 0.0
         self.obstacles = []
         self.guide_offset = 0.0
+        self.est = None  # pose the controller drives on (/car_state/odom: pf or gt by pose_source)
         self.last_gobs_t = -9.0
 
         self.create_subscription(Odometry, "/car_state/odom_GT", self.on_odom, 10)
+        self.create_subscription(Odometry, "/car_state/odom", self.on_est, 10)
         self.create_subscription(AckermannDriveStamped, "/drive", self.on_drive, 10)
         self.create_subscription(Float32, "/mppi/calculation_time", lambda m: setattr(self, "calc", m.data), 10)
         self.create_subscription(Float32, "/mppi/collision_rate", lambda m: setattr(self, "crate", m.data), 10)
@@ -92,6 +95,11 @@ class ExpMonitor(Node):
         q = m.pose.pose.orientation
         yaw = math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z))
         self.odom = (m.pose.pose.position.x, m.pose.pose.position.y, yaw, m.twist.twist.linear.x)
+
+    def on_est(self, m):
+        q = m.pose.pose.orientation
+        yaw = math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z))
+        self.est = (m.pose.pose.position.x, m.pose.pose.position.y, yaw)
 
     def on_drive(self, m):
         self.steer = m.drive.steering_angle
@@ -193,7 +201,8 @@ class ExpMonitor(Node):
         self.tw.writerow(["%.3f" % self.now(), "%.3f" % x, "%.3f" % y, "%.3f" % yaw, "%.3f" % v,
                           "%.4f" % self.steer, "%.3f" % self.speed, "%.2f" % self.calc, "%.3f" % self.crate,
                           "%.1f" % self.cost, self.coll, i, "%.2f" % s, "%.3f" % d,
-                          "%.3f" % self.best_end[0], "%.3f" % self.best_end[1], "%.3f" % self.guide_offset])
+                          "%.3f" % self.best_end[0], "%.3f" % self.best_end[1], "%.3f" % self.guide_offset]
+                         + self.loc_cols(x, y, yaw))
         if not self.recover or self.now() < self.cooldown_until or self.speed != self.speed:
             return  # no /drive yet (nan) -> controller not started, do nothing
         t = self.now()
@@ -228,6 +237,14 @@ class ExpMonitor(Node):
             self.last_move_pos, self.last_move_t = (x, y), t
         elif t - self.last_move_t > self.stuck_s:
             self.do_recover("stuck")
+
+    def loc_cols(self, x, y, yaw):
+        """localisation error = controller pose vs ground truth (only for analysis, never fed back)"""
+        if self.est is None:
+            return ["nan"] * 5
+        ex, ey, eyaw = self.est
+        dyaw = math.atan2(math.sin(eyaw - yaw), math.cos(eyaw - yaw))
+        return ["%.3f" % ex, "%.3f" % ey, "%.3f" % eyaw, "%.3f" % math.hypot(ex - x, ey - y), "%.3f" % dyaw]
 
     def close(self):
         self.trace.close()

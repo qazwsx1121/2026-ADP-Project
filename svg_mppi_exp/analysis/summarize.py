@@ -29,7 +29,7 @@ def summarize(run):
     if os.path.exists(tr):
         rows = list(csv.DictReader(open(tr)))
         inside, entries, last_t = False, 0, -99
-        calc = []
+        calc, lerr = [], []
         for row in rows:
             x, y, t = float(row["x"]), float(row["y"]), float(row["t"])
             ins = POCKET[0] < x < POCKET[1] and POCKET[2] < y < POCKET[3]
@@ -40,18 +40,26 @@ def summarize(run):
             c = float(row["calc_ms"])
             if c == c:
                 calc.append(c)
+            le = float(row.get("loc_err", "nan") or "nan")
+            if le == le:
+                lerr.append(le)
         out["pocket"] = entries
         if calc:
             calc.sort()
             out["calc_mean"] = sum(calc) / len(calc)
             out["calc_p95"] = calc[int(0.95 * (len(calc) - 1))]
             out["overrun%"] = 100.0 * sum(1 for c in calc if c > 25.0) / len(calc)
+        if lerr:  # controller pose vs ground truth: ~0 with pose=gt, pf error with pose=pf
+            lerr.sort()
+            out["loc_mean"] = sum(lerr) / len(lerr)
+            out["loc_p95"] = lerr[int(0.95 * (len(lerr) - 1))]
+            out["loc_max"] = lerr[-1]
     return out
 
 
 def main():
     keys = ["run", "laps", "clean_laps", "best", "clean_mean", "slow_laps", "pocket", "hits", "obs_hits", "wall_hits",
-            "teleports", "calc_mean", "calc_p95", "overrun%"]
+            "teleports", "calc_mean", "calc_p95", "overrun%", "loc_mean", "loc_p95", "loc_max"]
     print(" | ".join(keys))
     for run in sys.argv[1:]:
         o = summarize(run)

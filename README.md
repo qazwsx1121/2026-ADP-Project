@@ -72,6 +72,8 @@ bash ~/shared_dir/svg_mppi_exp/tools/train.sh berlin_v1 trials=60 laps=4 seed=10
 
 설정 고르는 법, 학습·검증 절차, 문제 해결은 [`학교PC_시작하기.md`](학교PC_시작하기.md)에 정리되어 있습니다.
 
+실험 도구는 차량 위치를 **`pose_source:=pf`(파티클 필터)로 기본 실행**합니다(교수님 답변 11/20: gt는 정성 평가 감점, `/map` 사용은 GT 아님). 예전 결과와 비교할 때만 `pose=gt`를 줍니다. 기록 노드가 pf 위치 오차(GT 대비)를 `trace.csv`에 남기고, `summarize.py`/`group_summary.py`가 `loc_*` 열로 보여 줍니다. 11/20 이전 결과는 모두 gt 기준입니다.
+
 노이즈를 켠 실험은 `run_exp.sh`에 옵션을 더하거나(`onoise=0.10 orot=1` 장애물 위치·회전, `snoise=0.03 sdrop=0.02 sghost=0.005` 라이다) `noise_sweep.sh`로 한 번에 돌립니다. 자세한 내용은 [`학교PC_노이즈실험.md`](학교PC_노이즈실험.md)에 있습니다.
 
 ```bash

@@ -9,12 +9,12 @@
 #   params=<yaml>             svg_mppi 설정 (기본: 패키지 svg_mppi_light.yaml)
 #   base=1                    1이면 표 없이 같은 seed 도 돌려 비교 (시간 2배)
 #   tag=v                     결과 폴더 이름 앞부분
-#   pose=gt            gt | pf (최종 평가는 pf 권장, 교수님 답변 11/20)
+#   pose=pf                   pf(기본) | gt  (최종 평가는 pf, 교수님 답변 11/20: gt 는 정성 평가 감점)
 #   noise="onoise=0.10 orot=1 ..."  노이즈를 켜고 검증 (run_exp.sh 옵션 그대로, 두 조건 모두 같은 노이즈)
 # 결과: runs/*_<tag>T_s<seed> (표 적용), runs/*_<tag>B_s<seed> (기준), 마지막에 합계 표 출력
 
 TABLE=${1:?usage: validate.sh <schedule.yaml> [seeds=... dur=240 params=... base=1 tag=v]}; shift
-seeds="2026 11 7 42 5"; dur=240; params=""; base=1; tag=v; noise=""; pose=gt
+seeds="2026 11 7 42 5"; dur=240; params=""; base=1; tag=v; noise=""; pose=pf
 for kv in "$@"; do printf -v "${kv%%=*}" '%s' "${kv#*=}"; done   # key=value (값에 공백이 있어도 됨)
 EXP=~/shared_dir/svg_mppi_exp
 source /opt/ros/humble/setup.bash
