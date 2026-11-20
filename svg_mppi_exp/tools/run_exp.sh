@@ -13,13 +13,14 @@
 #   set="a:=1 b:=2"    시작 후 ros2 param set /svg_mppi 로 바꿀 값 (공백 구분, 이름:=값)
 #   sched=<yaml>       param_scheduler.py 표 (구간/장애물별 파라미터 자동 변경)
 #   debug=1            조향이 뒤집히는 순간 solver 상태를 OUT/flip_*.json 으로 저장
+#   pose=gt            차량 위치 소스: gt(시뮬 정답) | pf(particle filter, 최종 평가 권장). pf면 시작 때 /initialpose 로 측위 초기화
 #   [장애물 노이즈] onoise=0.10 위치 σ[m]  orot=1 회전 무작위  odyn=0.02 매초 추가로 흔듦[m]  nseed=0
 #   [라이다 노이즈] snoise=0.03 거리 σ[m]  sdrop=0.02 빔 누락 확률  sghost=0.005 허상 점 확률 (컨트롤러만 봄)
 # 결과: ~/shared_dir/svg_mppi_exp/runs/<날짜_시간>_<tag>/  (race_result_*.json/png, trace.csv, events.csv, *.log)
 
 TAG=${1:-run}; shift
 dur=120; params=""; mode=svg_mppi; obs=0; seed=2026; gui=0; recover=1; set=""; sched=""; debug=0
-onoise=0; orot=0; odyn=0; nseed=0; snoise=0; sdrop=0; sghost=0
+onoise=0; orot=0; odyn=0; nseed=0; snoise=0; sdrop=0; sghost=0; pose=gt
 for kv in "$@"; do printf -v "${kv%%=*}" '%s' "${kv#*=}"; done   # key=value (값에 공백이 있어도 됨)
 
 source /opt/ros/humble/setup.bash
@@ -29,7 +30,7 @@ EXP=~/shared_dir/svg_mppi_exp
 OUT=$EXP/runs/$(date +%Y%m%d_%H%M%S)_$TAG
 mkdir -p "$OUT"
 WPNTS=~/forza_ws/race_stack/stack_master/maps/berlin/global_waypoints.json
-echo "tag=$TAG dur=$dur params=$params mode=$mode obs=$obs seed=$seed gui=$gui recover=$recover set=$set sched=$sched debug=$debug onoise=$onoise orot=$orot odyn=$odyn nseed=$nseed snoise=$snoise sdrop=$sdrop sghost=$sghost" | tee "$OUT/config.txt"
+echo "tag=$TAG dur=$dur params=$params mode=$mode obs=$obs seed=$seed gui=$gui recover=$recover set=$set sched=$sched debug=$debug onoise=$onoise orot=$orot odyn=$odyn nseed=$nseed snoise=$snoise sdrop=$sdrop sghost=$sghost pose=$pose" | tee "$OUT/config.txt"
 cp "$params" "$OUT/params.yaml"
 if [ "$debug" = 1 ]; then printf '    debug:\n      dump_dir: "%s"\n' "$OUT" >> "$OUT/params.yaml"; fi
 [ -n "$sched" ] && cp "$sched" "$OUT/schedule.yaml"
@@ -64,7 +65,8 @@ pkill -f "ros2 launch" 2>/dev/null; pkill -f rviz2 2>/dev/null; pkill -f gym_bri
 pkill -f exp_monitor.py 2>/dev/null; pkill -f race_manager 2>/dev/null; pkill -f param_scheduler.py 2>/dev/null
 pkill -f obstacle_noise.py 2>/dev/null; pkill -f scan_noise.py 2>/dev/null; sleep 2
 
-start base ros2 launch stack_master base_system_launch.xml map_name:=berlin pose_source:=gt
+[ "$pose" = gt ] || [ "$pose" = pf ] || { echo "pose must be gt or pf"; exit 1; }
+start base ros2 launch stack_master base_system_launch.xml map_name:=berlin pose_source:=$pose
 if [ "$gui" != "1" ]; then
   for i in $(seq 1 20); do pgrep -f "rviz2/rviz2" >/dev/null && break; sleep 0.5; done
   sleep 1; pkill -f "rviz2/rviz2"   # GUI 없이: RViz만 끔 (나머지 노드는 그대로)
@@ -72,6 +74,10 @@ fi
 # 시뮬 준비 대기
 for i in $(seq 1 60); do ros2 topic list 2>/dev/null | grep -q /global_waypoints_scaled && break; sleep 1; done
 sleep 3
+if [ "$pose" = pf ]; then  # 매뉴얼의 2D Pose Estimate 단계: 시작 위치를 particle filter 에 알려줌
+  timeout 20 python3 $EXP/tools/init_pf_pose.py > "$OUT/init_pose.log" 2>&1 || echo "warning: init_pf_pose failed, see $OUT/init_pose.log"
+  sleep 3
+fi
 
 start monitor python3 $EXP/tools/exp_monitor.py --ros-args -p out_dir:=$OUT -p waypoints_file:=$WPNTS -p recover:=$([ "$recover" = 1 ] && echo true || echo false)
 [ $SCAN_NOISE = 1 ] && start scannoise python3 $EXP/tools/scan_noise.py --ros-args -p sigma:=$snoise -p drop:=$sdrop -p ghost:=$sghost -p seed:=$nseed

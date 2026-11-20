@@ -9,12 +9,13 @@
 #   seed=100           학습용 seed (검증 seed 2026 11 7 42 5 와 겹치지 않게)
 #   params=<yaml>      svg_mppi 설정 (기본: 패키지 svg_mppi_light.yaml)
 #   space=<yaml>       탐색 공간 (기본: configs/tune_space.yaml)
+#   pose=gt            gt | pf (최종 평가는 pf 권장, 교수님 답변 11/20)
 #   noise="onoise=0.10 orot=1 snoise=0.03 sdrop=0.02 sghost=0.005"   노이즈를 켜고 학습 (run_exp.sh 옵션 그대로)
 # 중간에 Ctrl-C 해도 결과는 tuning/<study>.db 에 남고, 같은 이름으로 다시 실행하면 이어서 학습한다.
 # 결과: ~/shared_dir/svg_mppi_exp/tuning/<study>_best_schedule.yaml, <study>_trials.csv
 
 STUDY=${1:?usage: train.sh <study> [trials=60 laps=4 seed=100 params=... space=...]}; shift
-trials=60; laps=4; seed=100; params=""; space=""; noise=""
+trials=60; laps=4; seed=100; params=""; space=""; noise=""; pose=gt
 for kv in "$@"; do printf -v "${kv%%=*}" '%s' "${kv#*=}"; done   # key=value (값에 공백이 있어도 됨)
 EXP=~/shared_dir/svg_mppi_exp
 [ -z "$space" ] && space=$EXP/configs/tune_space.yaml
@@ -27,7 +28,7 @@ mkdir -p $EXP/tuning
 dur=$(( trials * (laps + 2) * 20 + 600 ))
 TAG=train_${STUDY}
 START=$(date +%Y%m%d_%H%M%S)   # 이 시각 이후에 생긴 실험 폴더만 쓴다 (이어서 학습할 때 옛 폴더를 잡지 않게)
-bash $EXP/tools/run_exp.sh $TAG dur=$dur obs=4 seed=$seed params=$params $noise > $EXP/tuning/${STUDY}_sim.log 2>&1 &
+bash $EXP/tools/run_exp.sh $TAG dur=$dur obs=4 seed=$seed params=$params pose=$pose $noise > $EXP/tuning/${STUDY}_sim.log 2>&1 &
 SIM_PID=$!
 stop_sim() {
   kill $SIM_PID 2>/dev/null; sleep 1
