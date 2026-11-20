@@ -26,6 +26,7 @@ mkdir -p $EXP/tuning
 # 1) 시뮬을 길게 (trial 수 x 2분 + 여유)
 dur=$(( trials * (laps + 2) * 20 + 600 ))
 TAG=train_${STUDY}
+START=$(date +%Y%m%d_%H%M%S)   # 이 시각 이후에 생긴 실험 폴더만 쓴다 (이어서 학습할 때 옛 폴더를 잡지 않게)
 bash $EXP/tools/run_exp.sh $TAG dur=$dur obs=4 seed=$seed params=$params $noise > $EXP/tuning/${STUDY}_sim.log 2>&1 &
 SIM_PID=$!
 stop_sim() {
@@ -41,6 +42,7 @@ trap stop_sim EXIT
 OUT=""
 for i in $(seq 1 120); do
   OUT=$(ls -dt $EXP/runs/*_$TAG 2>/dev/null | head -1)
+  if [ -n "$OUT" ] && [[ "$(basename "$OUT")" < "$START" ]]; then OUT=""; fi   # 이번 실행 전에 만들어진 폴더는 무시
   [ -n "$OUT" ] && ls $OUT/race_result_*.json >/dev/null 2>&1 && break
   sleep 2
 done
