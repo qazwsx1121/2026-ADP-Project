@@ -74,6 +74,7 @@ def main():
     ap.add_argument("--hit-penalty", type=float, default=10.0)
     ap.add_argument("--teleport-penalty", type=float, default=15.0)
     ap.add_argument("--lap-timeout", type=float, default=60.0)
+    ap.add_argument("--max-fail", type=int, default=3, help="랩 기록이 연속으로 이만큼 안 들어오면 학습을 멈춘다")
     ap.add_argument("--out", default=os.path.expanduser("~/shared_dir/svg_mppi_exp/tuning"))
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
@@ -116,6 +117,8 @@ def main():
                 break
         return j["laps"][base:base + n_after], j
 
+    fails = [0]
+
     def objective(trial):
         table = build_table(space, trial)
         sched.default = normalize(table["default"])
@@ -124,7 +127,16 @@ def main():
         sched.state = None  # force re-apply
         laps, j = wait_laps(a.laps)
         if not laps:
-            return 1e3
+            # 랩 기록이 안 들어옴 (시뮬 멈춤, 다른 폴더를 보고 있음 등): 점수를 주지 않고 건너뛴다 (DB를 오염시키지 않게)
+            fails[0] += 1
+            print(f"trial {trial.number}: no lap recorded in {a.lap_timeout:.0f} s ({fails[0]}/{a.max_fail}) — log dir {a.log_dir}", flush=True)
+            with open(os.path.join(a.out, f"{a.study}_trials.csv"), "a") as f:
+                f.write(f"{time.strftime('%H:%M:%S')},{trial.number},FAIL,,,,\"\",\"{trial.params}\"\n")
+            if fails[0] >= a.max_fail:
+                print("too many trials without lap records -> stopping. check the simulation log (tuning/<study>_sim.log)", flush=True)
+                trial.study.stop()
+            raise optuna.TrialPruned()
+        fails[0] = 0
         tele = j.get("teleports", [])
         lap_ids = {l["lap"] for l in laps}
         n_tele = sum(1 for t in tele if t.get("lap") in lap_ids)
@@ -148,10 +160,17 @@ def main():
     storage = f"sqlite:///{os.path.join(a.out, a.study)}.db"
     study = optuna.create_study(study_name=a.study, storage=storage, load_if_exists=True, direction="minimize",
                                 sampler=optuna.samplers.TPESampler(seed=0, n_startup_trials=8))
+    # 이어서 학습할 때 같은 탐색 순서를 반복하지 않도록 seed 를 지금까지의 trial 수로 바꾼다
+    study.sampler = optuna.samplers.TPESampler(seed=len(study.trials), n_startup_trials=8)
     if space.get("baseline") and len(study.trials) == 0:
         study.enqueue_trial(space["baseline"])  # 첫 trial 은 현재 설정 (비교 기준)
     study.optimize(objective, n_trials=a.trials)
 
+    done = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
+    if not done:
+        print("no completed trial -> no best table", flush=True)
+        rclpy.shutdown()
+        sys.exit(1)
     best = optuna.trial.FixedTrial(study.best_trial.params)
     table = build_table(space, best)
     out = os.path.join(a.out, f"{a.study}_best_schedule.yaml")
