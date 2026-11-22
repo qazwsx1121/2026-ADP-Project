@@ -1,31 +1,26 @@
 #!/usr/bin/env python3
-"""상황별 파라미터 자동 변경 노드 (학습 B안의 "주행 중" 부분).
+"""학습한 파라미터 표를 주행 중 /svg_mppi 에 넣는 노드.
 
-/drive 를 내지 않는다. 표(yaml)에 적힌 대로 /svg_mppi 의 파라미터만 바꾼다 -> 컨트롤러는 여전히 SVG-MPPI 하나.
-  - 구간(sector): 레이스라인 s 범위별 값
-  - 장애물: /mppi/guide_offset 이 0이 아니면(가이드가 장애물을 피하는 중) obstacle 값을 덮어씀
-표의 값은 사람이 정해도 되고, tune.py(Optuna)로 학습한 결과(best_schedule.yaml)를 그대로 넣어도 된다.
+/drive 를 내지 않는다. 표(yaml)의 값으로 /svg_mppi 의 파라미터만 바꾼다 -> 컨트롤러는 여전히 SVG-MPPI 하나.
+  - default : 시작할 때 한 번 넣는 값 (전체 속도 배율, guide 여유, λ 등)
+  - obstacle: guide 가 장애물을 피하는 중(/mppi/guide_offset != 0)일 때만 덮어쓰는 값
+트랙 구간·좌표·웨이포인트 번호에 따라 값을 바꾸는 기능은 넣지 않는다 (최종 평가 규칙: 구간별 하드코딩 감점).
+구간 차이가 필요하면 노드 안의 일반 규칙(예: guide.max_curvature, 레이스라인 곡률 기준)으로 처리한다.
 
 사용 (컨테이너):
-  python3 param_scheduler.py --ros-args -p table:=$HOME/shared_dir/svg_mppi_exp/configs/schedule_example.yaml
+  python3 param_scheduler.py --ros-args -p table:=$HOME/shared_dir/svg_mppi_exp/tuning/<study>_best_schedule.yaml
 
 표 형식:
-  default:  {reference_sdf.reference_speed_scale: 1.0}
-  sectors:
-    - {name: hairpin, s: [21.0, 27.0], params: {reference_sdf.reference_speed_scale: 0.85}}
+  default:  {reference_sdf.reference_speed_scale: 1.1, guide.max_curvature: 0.65}
   obstacle: {guide.speed_scale: 0.9}
 노드 쪽 파라미터(reference_sdf.*, reference_speed, guide.*)는 즉시 반영된다.
-solver 파라미터(svg_mppi.*, common.*)도 되지만 바뀔 때마다 solver 를 새로 만들어 웜스타트가 초기화되므로 구간마다 바꾸는 것은 비추천.
+solver 파라미터(svg_mppi.*, common.*)는 바뀔 때 solver 를 새로 만들므로 default 에만 두는 것을 권장.
 """
-import json
-import math
-import os
 import sys
 
 import rclpy
 import yaml
 from rclpy.node import Node
-from nav_msgs.msg import Odometry
 from std_msgs.msg import Float32
 from rcl_interfaces.srv import SetParameters
 from rcl_interfaces.msg import Parameter, ParameterValue, ParameterType
@@ -44,7 +39,7 @@ def to_param(name, value):
     return Parameter(name=name, value=v)
 
 
-# node parameters of svg_mppi that are doubles (yaml may say 1 instead of 1.0)
+# svg_mppi parameters that are integers / booleans (everything else is sent as double; yaml may say 1 instead of 1.0)
 INT_PARAMS = {"reference_sdf.num_waypoints", "svg_mppi.sample_batch_num", "svg_mppi.guide_sample_num",
               "svg_mppi.num_svgd_iteration", "svg_mppi.sample_num_for_grad_estimation", "common.prediction_step_size",
               "common.thread_num", "forward_mppi.sample_batch_num"}
@@ -67,71 +62,45 @@ class ParamScheduler(Node):
     def __init__(self):
         super().__init__("param_scheduler")
         table = self.declare_parameter("table", "").value
-        wp = self.declare_parameter(
-            "waypoints_file", os.path.expanduser("~/forza_ws/race_stack/stack_master/maps/berlin/global_waypoints.json")).value
         self.target = self.declare_parameter("target_node", "/svg_mppi").value
         self.obs_hold = self.declare_parameter("obstacle_hold_s", 0.5).value
-        self.load_table(table)
-        w = json.load(open(wp))["global_traj_wpnts_iqp"]["wpnts"]
-        self.wx = [p["x_m"] for p in w]
-        self.wy = [p["y_m"] for p in w]
-        self.ws = [p["s_m"] for p in w]
-        self.idx = None
+        self.load_table(yaml.safe_load(open(table)) if table else {})
         self.obstacle_until = 0.0
         self.applied = {}
-        self.cli = self.create_client(SetParameters, self.target + "/set_parameters")
-        self.create_subscription(Odometry, "/car_state/odom", self.on_odom, 10)
-        self.create_subscription(Float32, "/mppi/guide_offset", self.on_guide, 10)
         self.state = None
+        self.cli = self.create_client(SetParameters, self.target + "/set_parameters")
+        self.create_subscription(Float32, "/mppi/guide_offset", self.on_guide, 10)
         self.create_timer(0.05, self.tick)
-        self.pose = None
 
-    def load_table(self, path):
-        t = yaml.safe_load(open(path)) if path else {}
+    def load_table(self, t):
+        if t.get("sectors"):
+            raise ValueError("track-section (sector) tables are not supported: per-section hard-coded parameters "
+                             "are penalized in the final evaluation. Use default/obstacle only.")
         self.default = normalize(t.get("default"))
-        self.sectors = [(s["name"], float(s["s"][0]), float(s["s"][1]), normalize(s.get("params"))) for s in t.get("sectors", [])]
         self.obstacle = normalize(t.get("obstacle"))
-        self.get_logger().info(f"table: {len(self.sectors)} sectors, default={self.default}, obstacle={self.obstacle}")
-
-    def on_odom(self, m):
-        self.pose = (m.pose.pose.position.x, m.pose.pose.position.y)
+        self.state = None  # force re-apply
+        self.get_logger().info(f"table: default={self.default}, obstacle={self.obstacle}")
 
     def on_guide(self, m):
         if abs(m.data) > 0.05:
             self.obstacle_until = self.get_clock().now().nanoseconds * 1e-9 + self.obs_hold
 
-    def s_of(self, x, y):
-        n = len(self.wx)
-        rng = range(n) if self.idx is None else [(self.idx + k) % n for k in range(-20, 40)]
-        best = min(rng, key=lambda i: (self.wx[i] - x) ** 2 + (self.wy[i] - y) ** 2)
-        if self.idx is not None and (self.wx[best] - x) ** 2 + (self.wy[best] - y) ** 2 > 2.0:
-            best = min(range(n), key=lambda i: (self.wx[i] - x) ** 2 + (self.wy[i] - y) ** 2)
-        self.idx = best
-        return self.ws[best]
-
     def tick(self):
-        if self.pose is None or not self.cli.service_is_ready():
+        if not self.cli.service_is_ready():
             return
-        s = self.s_of(*self.pose)
-        sector = next((name for name, a, b, _ in self.sectors if a <= s < b), "default")
         obstacle = self.get_clock().now().nanoseconds * 1e-9 < self.obstacle_until
-        state = (sector, obstacle)
-        if state == self.state:
+        if obstacle == self.state:
             return
         want = dict(self.default)
-        for name, a, b, p in self.sectors:
-            if name == sector:
-                want.update(p)
         if obstacle:
             want.update(self.obstacle)
         change = {k: v for k, v in want.items() if self.applied.get(k) != v}
-        self.state = state
+        self.state = obstacle
         if not change:
             return
-        req = SetParameters.Request(parameters=[to_param(k, v) for k, v in change.items()])
-        self.cli.call_async(req)
+        self.cli.call_async(SetParameters.Request(parameters=[to_param(k, v) for k, v in change.items()]))
         self.applied.update(change)
-        self.get_logger().info(f"s={s:.1f} sector={sector} obstacle={obstacle} -> {change}")
+        self.get_logger().info(f"obstacle={obstacle} -> {change}")
 
 
 def main():

@@ -130,3 +130,6 @@ svg_mppi:
       blend: 1.5                 # [m] 구간 끝에서 레이스라인으로 돌아오는 길이
       speed_scale: 1.0           # 기준 경로를 옮긴 곳의 속도 배율
       max_range: 6.5             # [m] 이보다 먼 라이다 점은 무시
+      max_curvature: 0.0         # [1/m] [11/22] 차 주변 레이스라인 곡률이 이보다 크면 guide 를 쉬고 레이스라인 그대로 (0 = 항상 guide)
+      curv_ahead: 2.0            # [m] 곡률을 볼 범위 (앞)
+      curv_back: 0.5             # [m] 곡률을 볼 범위 (뒤)

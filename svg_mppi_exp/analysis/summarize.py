@@ -25,6 +25,17 @@ def summarize(run):
                    teleports=len(r.get("teleports", [])),
                    clean_mean=sum(clean) / len(clean) if clean else float("nan"),
                    clean_laps=len(clean), slow_laps=sum(1 for t in clean if clean and t > min(clean) + 3.0))
+        # final-eval metrics: consecutive conflict-free laps from the start, best lap inside that streak
+        streak = 0
+        for l in laps:
+            if l["total"] or l["partial"]:
+                break
+            streak += 1
+        out["streak"] = streak
+        out["streak_best"] = min(l["time"] for l in laps[:streak]) if streak else float("nan")
+    stop = os.path.join(run, "STOP")
+    out["end"] = ("crash" if os.path.exists(stop) else
+                  ("laps" if out.get("laps", 0) and out.get("streak", 0) >= 10 else "time"))
     tr = os.path.join(run, "trace.csv")
     if os.path.exists(tr):
         rows = list(csv.DictReader(open(tr)))
@@ -58,7 +69,7 @@ def summarize(run):
 
 
 def main():
-    keys = ["run", "laps", "clean_laps", "best", "clean_mean", "slow_laps", "pocket", "hits", "obs_hits", "wall_hits",
+    keys = ["run", "streak", "streak_best", "end", "laps", "clean_laps", "best", "clean_mean", "slow_laps", "pocket", "hits", "obs_hits", "wall_hits",
             "teleports", "calc_mean", "calc_p95", "overrun%", "loc_mean", "loc_p95", "loc_max"]
     print(" | ".join(keys))
     for run in sys.argv[1:]:

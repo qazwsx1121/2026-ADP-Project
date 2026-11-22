@@ -6,7 +6,7 @@ ForzaETH race stack(ROS 2 Humble)의 PP/TLN 컨트롤러를 **SVG-MPPI**(Honda e
 ```
 /scan  /car_state/odom  /global_waypoints_scaled  →  svg_mppi_node  →  /drive
                                       ↑
-               param_scheduler (학습된 구간별 파라미터를 주행 중 변경)
+               param_scheduler (학습된 파라미터를 주행 중 적용, 트랙 구간·좌표별 값 없음)
 ```
 
 - 컨트롤러는 SVG-MPPI 하나만 씁니다. 학습 결과는 `/drive`를 직접 내지 않고, MPPI의 파라미터만 바꿉니다.
@@ -85,7 +85,8 @@ bash ~/shared_dir/svg_mppi_exp/tools/train.sh berlin_noise params=$C/<설정>.ya
 
 - **λ 3.0 → 1.0**: berlin 왼쪽 위 S자 헤어핀에서 막다른 공간 진입이 장애물 0 기준 39랩 중 13회 → 44랩 중 0회.
 - **충돌 지도 부풀림 rigid → circle 0.15 m**: 장애물 4개, seed 5개 각 240 s 기준 28랩·충돌 34회 → 65랩·충돌 11회.
-- **장애물 노이즈 대비** (seed 3개, 각 240 s, guide + 헤어핀에서만 guide 끔): 장애물 위치 σ 0.10 m + 회전 무작위에서는 43랩 무충돌. 라이다 노이즈(거리 σ 3 cm, 빔 누락 2%, 허상 점 0.5%)에서는 충돌 5 → 11회로 늘어, 라이다 외톨이 점 제거 필터(`local_costmap.filter_isolated`, 기본 꺼짐)를 추가하고 학교 PC에서 확인 중.
+- 아래 두 결과는 11/22 공지 이전 방식(gt 위치, 장애물 4개, 자동 복구, 헤어핀 구간 표)으로 잰 것입니다. 공지에 맞춰 구간 표를 없애고 곡률 규칙(`guide.max_curvature`)으로 바꿨으며, pf + 평가 방식(장애물 1/3/5, 첫 충돌까지 연속 랩)으로 다시 재는 중입니다.
+- **장애물 노이즈 대비** (seed 3개, 각 240 s, guide + 헤어핀 구간 표): 장애물 위치 σ 0.10 m + 회전 무작위에서는 43랩 무충돌. 라이다 노이즈(거리 σ 3 cm, 빔 누락 2%, 허상 점 0.5%)에서는 충돌 5 → 11회로 늘어, 라이다 외톨이 점 제거 필터(`local_costmap.filter_isolated`, 기본 꺼짐)를 추가하고 학교 PC에서 확인 중.
 - 상세 근거는 [`svg_mppi/README.md`](svg_mppi/README.md)와 [`svg_mppi_exp/report/`](svg_mppi_exp/report/)를 참고하세요.
 
 ## 일정
