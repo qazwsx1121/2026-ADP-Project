@@ -92,10 +92,10 @@ C=~/shared_dir/svg_mppi_exp/configs
 bash ~/shared_dir/svg_mppi_exp/tools/train.sh berlin_v1 trials=60 laps=4 seed=100 params=$C/<고른 설정>.yaml
 ```
 
-- trial 하나 = 구간별 파라미터 표 하나를 넣고 4랩(랩마다 장애물 배치가 바뀜) 달린 결과로 점수를 냅니다. 점수 = 평균 랩타임 + 10 × 충돌 + 15 × 복구.
+- trial 하나 = 파라미터 표 하나를 넣고 4랩(랩마다 장애물 배치가 바뀜) 달린 결과로 점수를 냅니다. 점수 = 평균 랩타임 + 10 × 충돌 + 15 × 복구.
 - trial 1개에 약 1.5분 → 60개면 1.5~2시간. 밤새 돌리려면 `trials=300`.
 - 첫 trial은 현재 최고 설정(비교 기준), 처음 8개는 무작위 탐색입니다.
-- 학습하는 값: 구간 5개(출발 직선 / 아래 헤어핀 / 뒤 직선 / S자 헤어핀 / 큰 커브)의 속도 배율, 장애물 근처 속도, guide 여유 거리·유지 비용, λ. 헤어핀에서는 guide를 항상 끕니다. (`configs/tune_space.yaml`)
+- 학습하는 값(트랙 전체에 같은 값, 구간·좌표별 값 없음): 전체 속도 배율, guide 를 쉬는 곡률 기준(`guide.max_curvature`), 장애물 근처 속도, guide 여유 거리·유지 비용, λ (`configs/tune_space.yaml`). 11/22 공지: 구간별 하드코딩은 대폭 감점.
 - 진행 확인(다른 컨테이너 터미널): `tail -f ~/shared_dir/svg_mppi_exp/tuning/berlin_v1_trials.csv`
 - 멈추기: Ctrl-C. 같은 이름(`berlin_v1`)으로 다시 실행하면 이어서 학습합니다(`tuning/berlin_v1.db`).
 - GUI 없이 돕니다. **학습 중에는 같은 PC에서 게임 등 무거운 작업을 하지 마세요.** 계산 시간이 2배가 되어 학습 결과가 틀어집니다.

@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Optuna 로 상황별 파라미터 표를 학습한다 (학습 A+B안).
+"""Optuna 로 SVG-MPPI 파라미터 표를 학습한다.
+
+학습하는 값은 트랙 전체에 같이 쓰는 값(default)과 장애물을 피하는 동안만 쓰는 값(obstacle)뿐이다.
+트랙 구간·좌표별 값은 학습하지 않는다 (최종 평가 규칙: 구간별 하드코딩 감점). 구간에 따른 차이는
+노드의 일반 규칙(guide.max_curvature 등)의 계수를 학습하는 방식으로 다룬다.
 
 전제: 시뮬 + svg_mppi + race_manager + exp_monitor 가 이미 돌고 있다 (run_exp.sh 를 긴 dur 로 실행).
 한 trial = 파라미터 표 하나를 넣고 -> 다음 랩 경계부터 laps 랩을 달린 결과로 점수 계산.
@@ -24,7 +28,7 @@ import yaml
 from rclpy.executors import MultiThreadedExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from param_scheduler import ParamScheduler, normalize  # noqa: E402
+from param_scheduler import ParamScheduler  # noqa: E402
 
 
 def newest_json(log_dir):
@@ -42,10 +46,11 @@ def read_json(path):
 
 
 def build_table(space, trial):
-    """space.yaml -> trial 이 고른 값으로 schedule 표(dict)를 만든다."""
-    table = {"default": dict(space.get("fixed", {}).get("default", {})), "sectors": [], "obstacle": {}}
-    sectors = {s["name"]: {"name": s["name"], "s": s["s"], "params": dict(s.get("params", {}))} for s in space.get("sectors", [])}
-    table["obstacle"] = dict(space.get("fixed", {}).get("obstacle", {}))
+    """space.yaml -> trial 이 고른 값으로 표(dict: default, obstacle)를 만든다."""
+    if space.get("sectors"):
+        raise ValueError("sector (track-section) search spaces are not supported (final-eval rule)")
+    table = {"default": dict(space.get("fixed", {}).get("default", {})),
+             "obstacle": dict(space.get("fixed", {}).get("obstacle", {}))}
     for key, spec in space["space"].items():
         scope, pname = key.split(".", 1)
         lo, hi = spec[0], spec[1]
@@ -54,13 +59,9 @@ def build_table(space, trial):
             v = trial.suggest_int(key, lo, hi, log=log)
         else:
             v = trial.suggest_float(key, float(lo), float(hi), log=log)
-        if scope == "default":
-            table["default"][pname] = v
-        elif scope == "obstacle":
-            table["obstacle"][pname] = v
-        else:
-            sectors[scope]["params"][pname] = v
-    table["sectors"] = list(sectors.values())
+        if scope not in ("default", "obstacle"):
+            raise ValueError(f"{key}: scope must be default or obstacle")
+        table[scope][pname] = v
     return table
 
 
@@ -121,10 +122,7 @@ def main():
 
     def objective(trial):
         table = build_table(space, trial)
-        sched.default = normalize(table["default"])
-        sched.sectors = [(s["name"], float(s["s"][0]), float(s["s"][1]), normalize(s["params"])) for s in table["sectors"]]
-        sched.obstacle = normalize(table["obstacle"])
-        sched.state = None  # force re-apply
+        sched.load_table(table)  # also forces re-apply
         laps, j = wait_laps(a.laps)
         if not laps:
             # 랩 기록이 안 들어옴 (시뮬 멈춤, 다른 폴더를 보고 있음 등): 점수를 주지 않고 건너뛴다 (DB를 오염시키지 않게)

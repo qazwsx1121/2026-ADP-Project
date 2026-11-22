@@ -32,6 +32,8 @@ class ExpMonitor(Node):
         self.hold_s = self.declare_parameter("collision_hold_s", 1.0).value
         self.stuck_s = self.declare_parameter("stuck_s", 4.0).value
         self.back_m = self.declare_parameter("back_m", 1.0).value
+        # eval mode: write this file on the first collision so run_exp.sh ends the run (final eval: a crash ends the run)
+        self.stop_file = self.declare_parameter("stop_file", "").value
         self.ahead_m = self.declare_parameter("ahead_m", 1.5).value
         self.last_rec = None
         self.rec_streak = 0
@@ -53,7 +55,7 @@ class ExpMonitor(Node):
         self.tw = csv.writer(self.trace)
         self.tw.writerow(["t", "x", "y", "yaw", "v", "steer_cmd", "speed_cmd", "calc_ms", "coll_rate", "cost",
                           "collision", "idx", "s", "d", "best_end_x", "best_end_y", "guide_offset",
-                          "est_x", "est_y", "est_yaw", "loc_err", "loc_yaw_err"])
+                          "est_x", "est_y", "est_yaw", "loc_err", "loc_yaw_err", "ekf_x", "ekf_y", "ekf_v"])
         self.events = open(os.path.join(self.out_dir, "events.csv"), "w", newline="")
         self.ew = csv.writer(self.events)
         self.ew.writerow(["t", "event", "x", "y", "s", "info"])
@@ -70,10 +72,13 @@ class ExpMonitor(Node):
         self.obstacles = []
         self.guide_offset = 0.0
         self.est = None  # pose the controller drives on (/car_state/odom: pf or gt by pose_source)
+        self.ekf = None  # odometry the particle filter's motion model uses (/early_fusion/odom)
         self.last_gobs_t = -9.0
 
         self.create_subscription(Odometry, "/car_state/odom_GT", self.on_odom, 10)
         self.create_subscription(Odometry, "/car_state/odom", self.on_est, 10)
+        self.create_subscription(Odometry, "/early_fusion/odom", lambda m: setattr(
+            self, "ekf", (m.pose.pose.position.x, m.pose.pose.position.y, m.twist.twist.linear.x)), 10)
         self.create_subscription(AckermannDriveStamped, "/drive", self.on_drive, 10)
         self.create_subscription(Float32, "/mppi/calculation_time", lambda m: setattr(self, "calc", m.data), 10)
         self.create_subscription(Float32, "/mppi/collision_rate", lambda m: setattr(self, "crate", m.data), 10)
@@ -110,6 +115,9 @@ class ExpMonitor(Node):
             if m.data != "none" and self.odom:
                 i, s, d = self.frenet(self.odom[0], self.odom[1])
                 self.event("collision", self.odom[0], self.odom[1], s, m.data)
+                if self.stop_file and not os.path.exists(self.stop_file):
+                    with open(self.stop_file, "w") as f:
+                        f.write(f"{m.data} collision at t={self.now():.1f}s s={s:.1f} ({self.odom[0]:.2f},{self.odom[1]:.2f})\n")
             self.coll_since = self.now() if m.data != "none" else None
         self.coll = m.data
 
@@ -240,11 +248,12 @@ class ExpMonitor(Node):
 
     def loc_cols(self, x, y, yaw):
         """localisation error = controller pose vs ground truth (only for analysis, never fed back)"""
+        ekf = ["%.3f" % v for v in self.ekf] if self.ekf else ["nan"] * 3
         if self.est is None:
-            return ["nan"] * 5
+            return ["nan"] * 5 + ekf
         ex, ey, eyaw = self.est
         dyaw = math.atan2(math.sin(eyaw - yaw), math.cos(eyaw - yaw))
-        return ["%.3f" % ex, "%.3f" % ey, "%.3f" % eyaw, "%.3f" % math.hypot(ex - x, ey - y), "%.3f" % dyaw]
+        return ["%.3f" % ex, "%.3f" % ey, "%.3f" % eyaw, "%.3f" % math.hypot(ex - x, ey - y), "%.3f" % dyaw] + ekf
 
     def close(self):
         self.trace.close()
@@ -256,8 +265,12 @@ def main():
     node = ExpMonitor()
     try:
         rclpy.spin(node)
-    except (KeyboardInterrupt, Exception):
+    except KeyboardInterrupt:
         pass
+    except Exception:  # never die silently: an empty trace.csv is useless
+        import traceback
+        traceback.print_exc()
+        sys.stderr.flush()
     finally:
         node.close()
 

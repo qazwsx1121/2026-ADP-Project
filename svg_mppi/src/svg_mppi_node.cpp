@@ -85,6 +85,7 @@ double steady_sec() {
 struct Pose2D {
   double x = 0.0, y = 0.0, yaw = 0.0, vel = 0.0;
   double s = 0.0, psi = 0.0, dl = 1.0, dr = 1.0;  // raceline only: arc length, tangent, track bounds
+  double kappa = 0.0;                              // raceline only: curvature [1/m] (from the global planner)
 };
 
 // static map distance field (meters to the nearest wall / unknown cell)
@@ -122,6 +123,11 @@ struct GuideCfg {
   double blend = 1.5;          // [m] return to raceline after the window
   double speed_scale = 1.0;    // speed factor where the reference is shifted (|offset| > 0.1 m)
   double max_range = 6.5;      // [m] ignore scan points beyond this
+  // [11/22] generic rule (no track coordinates): pause the guide where the raceline itself is very tight.
+  // In a hairpin, shifting the reference sideways sends the car wide into walls, so the plain raceline is safer there.
+  double max_curvature = 0.0;  // [1/m] pause guide if max |kappa| of the raceline near the car exceeds this (0 = never)
+  double curv_ahead = 2.0;     // [m] raceline window ahead of the car for that check
+  double curv_back = 0.5;      // [m] ... and behind
 };
 
 struct ObsPt {
@@ -265,7 +271,9 @@ class SVGMPPINode : public rclcpp::Node {
                 {"guide.w_side", &GuideCfg::w_side},
                 {"guide.max_slope", &GuideCfg::max_slope},       {"guide.static_margin", &GuideCfg::static_margin},
                 {"guide.memory", &GuideCfg::memory},             {"guide.blend", &GuideCfg::blend},
-                {"guide.speed_scale", &GuideCfg::speed_scale},   {"guide.max_range", &GuideCfg::max_range}};
+                {"guide.speed_scale", &GuideCfg::speed_scale},   {"guide.max_range", &GuideCfg::max_range},
+                {"guide.max_curvature", &GuideCfg::max_curvature}, {"guide.curv_ahead", &GuideCfg::curv_ahead},
+                {"guide.curv_back", &GuideCfg::curv_back}};
     for (auto& [name, field] : guide_d_) g.*field = declare_parameter<double>(name, g.*field);
 
     // ---------------- local_costmap_generator_simulation.yaml ----------------
@@ -451,6 +459,7 @@ class SVGMPPINode : public rclcpp::Node {
       q.s = w.s_m;
       q.dl = w.d_left;
       q.dr = w.d_right;
+      q.kappa = w.kappa_radpm;
       wps.push_back(q);
     }
     const size_t n = wps.size();
@@ -663,6 +672,20 @@ class SVGMPPINode : public rclcpp::Node {
     const double tnow = steady_sec();
     const int ir = nearest_index(path, robot.x, robot.y, guide_idx_, 30);
     guide_idx_ = ir;
+
+    // [11/22] curvature rule: raceline too tight around the car -> follow the plain raceline (generic, map-derived)
+    if (c.max_curvature > 0.0) {
+      double kmax = 0.0;
+      const int nb = static_cast<int>(std::round(c.curv_back / 0.1)), na = static_cast<int>(std::round(c.curv_ahead / 0.1));
+      for (int m = -nb; m <= na; ++m) kmax = std::max(kmax, std::abs(path[((ir + m) % n + n) % n].kappa));
+      if (kmax > c.max_curvature) {
+        if (!prev_guide_.empty())
+          RCLCPP_INFO(get_logger(), "guide paused: raceline curvature %.2f > %.2f 1/m", kmax, c.max_curvature);
+        prev_guide_.clear();
+        publish_f32(pub_guide_offset_, 0.0);
+        return false;
+      }
+    }
     const double cpsi = std::cos(path[ir].psi), spsi = std::sin(path[ir].psi);
     const double d_car = cpsi * (robot.y - path[ir].y) - spsi * (robot.x - path[ir].x);
 

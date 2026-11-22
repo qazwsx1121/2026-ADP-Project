@@ -1,5 +1,0 @@
-# 헤어핀 진입(s 20~25.5)만 속도 x0.75
-default:
-  reference_sdf.reference_speed_scale: 1.0
-sectors:
-  - {name: s_hairpin, s: [20.0, 25.5], params: {reference_sdf.reference_speed_scale: 0.75}}
