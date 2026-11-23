@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """학습한 파라미터 표를 주행 중 /svg_mppi 에 넣는 노드.
 
+[11/23] 최종 평가는 run 사이에도 설정을 바꿀 수 없어 train_eval.sh(tune_eval.py)가 설정 파일 하나를 학습한다.
+그 방식에서는 이 노드를 쓰지 않는다. (obstacle.guide.speed_scale 은 guide.speed_scale 과 같은 값: 원래 guide 가
+기준 경로를 옮긴 곳에서만 쓰이므로 설정 파일에 그냥 적으면 된다.) 이 노드는 이전 방식(train.sh)용으로만 남겨 둔다.
+
 /drive 를 내지 않는다. 표(yaml)의 값으로 /svg_mppi 의 파라미터만 바꾼다 -> 컨트롤러는 여전히 SVG-MPPI 하나.
   - default : 시작할 때 한 번 넣는 값 (전체 속도 배율, guide 여유, λ 등)
   - obstacle: guide 가 장애물을 피하는 중(/mppi/guide_offset != 0)일 때만 덮어쓰는 값

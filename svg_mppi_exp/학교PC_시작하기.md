@@ -84,7 +84,27 @@ cd ~/shared_dir/svg_mppi_exp/runs && python3 ../analysis/summarize.py *_bench_*
 
 **고르는 기준:** `calc_mean` 20 ms 이하이고 `overrun%` 15% 이하인 것 중 샘플이 많은 것. 원본 두 개가 모두 기준을 넘으면 `school_light_t8.yaml`을 씁니다. 내 PC(6코어)에서는 light가 20 ms, 원본이 43 ms였습니다.
 
-## 6. 학습 시작
+## 6. 학습 시작 (평가 방식, 11/23~ 권장)
+
+11/23 교수님 답변: **run 사이에 설정을 바꿀 수 없음** → 장애물 1/3/5 개를 설정 하나로 달려야 합니다.
+그래서 학습도 평가와 똑같이 합니다: trial 하나 = 설정 파일 하나로 장애물 1, 3, 5 개를 각각 처음부터 달림 (충돌하면 그 run 끝, 자동 복구 없음, pf).
+
+```bash
+# [컨테이너] 밤새 돌리기 (trial 1개 ≈ 4~5분 → 100개 ≈ 7~8시간)
+nohup bash ~/shared_dir/svg_mppi_exp/tools/train_eval.sh berlin_e1 trials=100 > ~/shared_dir/svg_mppi_exp/tuning/berlin_e1_train.log 2>&1 &
+```
+
+- 점수(작을수록 좋음) = 장애물 1/3/5 각각 `20 × (4 − 연속 무충돌 랩) + 연속 구간 베스트 랩` 의 합. 평가 순위(연속 랩 수 + 베스트 랩)와 같은 방향이고, 박지 않는 것이 먼저입니다.
+- 조건마다 최대 4바퀴 (평가는 10바퀴지만 시간 때문에). 장애물 seed 는 `seed+k` (k = 장애물 수, 기본 101/103/105).
+- 주행 중 파라미터를 바꾸는 노드(param_scheduler)를 쓰지 않습니다. 결과 `tuning/berlin_e1_best.yaml` 이 그대로 **최종 설정 파일**입니다.
+- 진행 확인: `cat ~/shared_dir/svg_mppi_exp/tuning/berlin_e1_trials.csv` (조건별 연속 랩 / 베스트 / 끝난 이유)
+- 멈추기: `pkill -INT -f tune_eval.py`. 같은 이름으로 다시 실행하면 이어서 학습합니다.
+- 학습 후 검증: 학습에 안 쓴 seed 로 평가와 똑같이 10바퀴
+  ```bash
+  bash ~/shared_dir/svg_mppi_exp/tools/run_exp.sh final_o5 eval=1 maxlaps=10 dur=180 obs=5 seed=2026 params=$HOME/shared_dir/svg_mppi_exp/tuning/berlin_e1_best.yaml gui=1
+  ```
+
+### (이전 방식) 장애물 4개 연속 주행 + 주행 중 표 적용
 
 ```bash
 # [컨테이너]  <고른 설정> 을 5번에서 고른 파일 이름으로
