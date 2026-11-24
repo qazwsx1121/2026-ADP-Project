@@ -5,6 +5,7 @@
 #      -> runs/, tuning/ 같은 실험·학습 결과는 건드리지 않음
 #   2) ~/shared_dir/proj-svg_mppi (공식 코드) 갱신
 #   3) ~/forza_ws/race_stack/svg_mppi 를 저장소 것으로 교체 (기존 것은 백업) 후 빌드
+#   4) race_stack_changes/ 의 파일(수업 스택에서 우리가 고친 파일, 예: particle_filter)을 race_stack 에 덮어쓰고 그 패키지 빌드
 #
 # 사용 (컨테이너 터미널, misys@):
 #   처음:     cd ~/shared_dir && git clone https://github.com/qazwsx1121/2026-ADP-Project.git
@@ -38,7 +39,7 @@ git -C "$REPO" rev-parse --git-dir >/dev/null 2>&1 && git -C "$REPO" config core
 # 1) svg_mppi_exp: 코드 폴더만 (결과 폴더 runs/ tuning/ 등은 그대로)
 mkdir -p "$SHARED"
 if same "$REPO/svg_mppi_exp" "$SHARED/svg_mppi_exp"; then
-  echo "[1/3] svg_mppi_exp 는 저장소 폴더 그대로 사용 (링크) — 복사 생략"
+  echo "[1/4] svg_mppi_exp 는 저장소 폴더 그대로 사용 (링크) — 복사 생략"
 else
   mkdir -p "$SHARED/svg_mppi_exp"
   for d in tools configs analysis report pylib; do
@@ -47,17 +48,17 @@ else
     cp -r "$REPO/svg_mppi_exp/$d/." "$SHARED/svg_mppi_exp/$d/"
   done
   cp "$REPO"/svg_mppi_exp/*.md "$SHARED/svg_mppi_exp/" 2>/dev/null || true
-  echo "[1/3] $SHARED/svg_mppi_exp 의 tools/configs/analysis/report/pylib 갱신 (runs, tuning 은 그대로)"
+  echo "[1/4] $SHARED/svg_mppi_exp 의 tools/configs/analysis/report/pylib 갱신 (runs, tuning 은 그대로)"
 fi
 chmod +x "$SHARED"/svg_mppi_exp/tools/*.sh 2>/dev/null || true
 
 # 2) 공식 코드
 if same "$REPO/proj-svg_mppi" "$SHARED/proj-svg_mppi"; then
-  echo "[2/3] proj-svg_mppi 는 저장소 폴더 그대로 사용 — 복사 생략"
+  echo "[2/4] proj-svg_mppi 는 저장소 폴더 그대로 사용 — 복사 생략"
 else
   mkdir -p "$SHARED/proj-svg_mppi"
   cp -r "$REPO/proj-svg_mppi/." "$SHARED/proj-svg_mppi/"
-  echo "[2/3] $SHARED/proj-svg_mppi 갱신"
+  echo "[2/4] $SHARED/proj-svg_mppi 갱신"
 fi
 
 # 3) race_stack 의 svg_mppi 교체 (기존 것은 백업) + 빌드
@@ -67,7 +68,24 @@ if [ -d "$WS/svg_mppi" ]; then
   echo "      기존 $WS/svg_mppi -> $SHARED/svg_mppi_exp/backup/race_stack_svg_mppi_$STAMP"
 fi
 cp -r "$REPO/svg_mppi" "$WS/svg_mppi"
-echo "[3/3] $WS/svg_mppi 교체"
+echo "[3/4] $WS/svg_mppi 교체"
+
+# 4) 수업 스택에서 고친 파일 (원본은 backup/ 에 보관)
+CHANGED_PKGS=""
+if [ -d "$REPO/race_stack_changes" ]; then
+  while IFS= read -r f; do
+    rel=${f#$REPO/race_stack_changes/}
+    dst="$WS/$rel"
+    if [ -f "$dst" ] && ! cmp -s "$f" "$dst"; then
+      mkdir -p "$SHARED/svg_mppi_exp/backup/race_stack_orig/$(dirname "$rel")"
+      [ -f "$SHARED/svg_mppi_exp/backup/race_stack_orig/$rel" ] || cp "$dst" "$SHARED/svg_mppi_exp/backup/race_stack_orig/$rel"
+    fi
+    mkdir -p "$(dirname "$dst")"; cp "$f" "$dst"
+    CHANGED_PKGS="$CHANGED_PKGS ${rel%%/*}"
+  done < <(find "$REPO/race_stack_changes" -type f ! -name "*.md" ! -name "*.diff")
+  CHANGED_PKGS=$(echo $CHANGED_PKGS | tr ' ' '\n' | sort -u | tr '\n' ' ')
+  echo "[4/4] race_stack 에 반영: $CHANGED_PKGS (원본은 $SHARED/svg_mppi_exp/backup/race_stack_orig/)"
+fi
 
 if [ $BUILD = 1 ]; then
   set +e
@@ -75,6 +93,10 @@ if [ $BUILD = 1 ]; then
   [ -f "$WS/install/setup.bash" ] && source "$WS/install/setup.bash"
   cd "$WS" && colcon build --packages-select svg_mppi --cmake-args -DSVG_MPPI_CORE_DIR="$SHARED/proj-svg_mppi/src/mppi_controller" 2>&1 | tail -3
   [ ${PIPESTATUS[0]} -eq 0 ] || { echo "빌드 실패: 위 메시지를 확인하세요"; exit 1; }
+  if [ -n "$CHANGED_PKGS" ]; then
+    cd "$WS" && colcon build --packages-select $CHANGED_PKGS 2>&1 | tail -2
+    [ ${PIPESTATUS[0]} -eq 0 ] || { echo "빌드 실패 ($CHANGED_PKGS)"; exit 1; }
+  fi
   echo "빌드 완료. 새 터미널에서: source ~/forza_ws/race_stack/install/setup.bash"
 fi
 echo "적용 끝."
