@@ -78,7 +78,7 @@ fi
 for i in $(seq 1 60); do ros2 topic list 2>/dev/null | grep -q /global_waypoints_scaled && break; sleep 1; done
 sleep 3
 if [ "$pose" = pf ]; then  # 매뉴얼의 2D Pose Estimate 단계: 시작 위치를 particle filter 에 알려줌
-  timeout 20 python3 $EXP/tools/init_pf_pose.py > "$OUT/init_pose.log" 2>&1 || echo "warning: init_pf_pose failed, see $OUT/init_pose.log"
+  timeout 60 python3 $EXP/tools/init_pf_pose.py > "$OUT/init_pose.log" 2>&1 || echo "warning: init_pf_pose failed, see $OUT/init_pose.log"
   sleep 3
 fi
 

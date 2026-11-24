@@ -1,0 +1,152 @@
+diff --git a/particle_filter/particle_filter/particle_filter.py b/particle_filter/particle_filter/particle_filter.py
+old mode 100755
+new mode 100644
+index 1b90f17..60cfba8
+--- a/particle_filter/particle_filter/particle_filter.py
++++ b/particle_filter/particle_filter/particle_filter.py
+@@ -110,6 +110,41 @@ class ParticleFiler(Node):
+         self.MOTION_DISPERSION_X     = self.get_parameter('motion_dispersion_x').value
+         self.MOTION_DISPERSION_Y     = self.get_parameter('motion_dispersion_y').value
+         self.MOTION_DISPERSION_THETA = self.get_parameter('motion_dispersion_theta').value
++
++        # [8조 11/24] odometry jump gate.
++        # The EKF odometry (/early_fusion/odom) sometimes jumps by metres in one message (filter stalls / resets).
++        # odomCB used the raw pose difference as the motion of every particle, so the whole filter teleported and
++        # the car drove into a wall. The pose difference is now checked against the velocity the same message
++        # reports (twist x dt); if they disagree, the velocity-based motion is used instead.
++        # 'velocity': translation = EKF twist x dt (arc), heading = EKF heading change  <- default (11/24 v2)
++        #             The EKF *pose* was found to grow 3-4x faster than its own velocity for a while after start/stalls,
++        #             while the EKF velocity matched the truth; integrating the velocity avoids that drift.
++        # 'pose'    : original behaviour (EKF pose difference), optionally with the jump gate below
++        self.ODOM_MOTION = self.declare_parameter('odom_motion', 'velocity').value
++        self.ODOM_GATE = self.declare_parameter('odom_gate', True).value
++        self.ODOM_GATE_TRANS = self.declare_parameter('odom_gate_trans', 0.30).value   # [m] allowed |pose delta - v*dt|
++        self.ODOM_GATE_ROT = self.declare_parameter('odom_gate_rot', 0.30).value       # [rad] + 8 rad/s x dt: heading jump limit
++        self.ODOM_GATE_MAX_DT = self.declare_parameter('odom_gate_max_dt', 0.5).value  # [s] longest gap integrated
++        # [8조 11/24 v4] system clock jumps and odometry gaps.
++        # Every node stamps messages with the system clock (no use_sim_time). On WSL2 the system clock was found to
++        # jump forward by ~2.94 s every ~32 s (the monotonic clock advanced only 10 ms meanwhile, the simulated car
++        # did not move). The EKF then extrapolates over the jump (pose +6..13 m, heading +yaw rate x 2.9 s, snapping
++        # back one message later), and speed x stamp difference moved every particle up to odom_gate_max_dt x speed.
++        #  - clock jump: the stamp difference exceeds the time between receptions (monotonic clock) by more than
++        #    odom_clock_jump -> use the reception interval instead. (Not smaller than ~1 s: when this node itself is
++        #    late, an EKF stall of 0.36 s arrived only 61 ms after the previous message; that is real motion.)
++        #  - gap: still longer than odom_gap_dt (e.g. the whole machine or the simulator really stopped, so the motion
++        #    in between is unknown) -> each particle moves by speed x its own random time in [0, dt], the scan decides.
++        #    Shorter EKF stalls (~0.35 s, CPU contention) are real elapsed time and are integrated normally.
++        #  - the heading change of these messages and of the next one comes from the yaw rate (EKF heading jumps).
++        self.ODOM_CLOCK_JUMP = self.declare_parameter('odom_clock_jump', 1.0).value  # [s], 0 = off
++        self.ODOM_GAP_DT = self.declare_parameter('odom_gap_dt', 0.5).value          # [s], 0 = off
++        self.odom_gaps = 0
++        self.clock_jumps = 0
++        self.after_gap = False
++        self.last_odom_recv = None
++        self.last_odom_t = None
++        self.odom_rejected = 0
+         
+         # various data containers used in the MCL algorithm
+         self.MAX_RANGE_PX = None
+@@ -365,19 +400,86 @@ class ParticleFiler(Node):
+         pose = np.array([position[0], position[1], orientation])
+         self.current_speed = msg.twist.twist.linear.x
+ 
++        t_msg = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
++        t_recv = time.monotonic()  # [8조 11/24 v4] reception time on a clock that does not jump
+         if isinstance(self.last_pose, np.ndarray):
+             # changes in x,y,theta in local coordinate system of the car
+             rot = Utils.rotation_matrix(-self.last_pose[2])
+             delta = np.array([position - self.last_pose[0:2]]).transpose()
+             local_delta = (rot*delta).transpose()
+-            
+-            self.odometry_data = np.array([local_delta[0,0], local_delta[0,1], orientation - self.last_pose[2]])
++            dyaw = np.arctan2(np.sin(orientation - self.last_pose[2]), np.cos(orientation - self.last_pose[2]))
++
++            self.odometry_data = np.array([local_delta[0,0], local_delta[0,1], dyaw])
++            if self.ODOM_MOTION == 'velocity' and self.last_odom_t is not None:
++                # [8조 11/24 v4] clock jumps and gaps (see __init__)
++                dt_stamp = max(t_msg - self.last_odom_t, 0.0)
++                dt_raw = dt_stamp
++                jumped = False
++                if (self.ODOM_CLOCK_JUMP > 0.0 and self.last_odom_recv is not None
++                        and dt_stamp - (t_recv - self.last_odom_recv) > self.ODOM_CLOCK_JUMP):
++                    dt_raw = max(t_recv - self.last_odom_recv, 0.0)
++                    jumped = True
++                    self.clock_jumps += 1
++                    self.get_logger().warn(
++                        f'system clock jump #{self.clock_jumps}: EKF stamps advanced {dt_stamp * 1e3:.0f} ms but only '
++                        f'{dt_raw * 1e3:.0f} ms passed here -> using {dt_raw * 1e3:.0f} ms')
++                dt = min(dt_raw, self.ODOM_GATE_MAX_DT)
++                tw = msg.twist.twist
++                speed = np.hypot(tw.linear.x, tw.linear.y) * (1.0 if tw.linear.x >= 0.0 else -1.0)
++                if self.ODOM_GAP_DT > 0.0 and dt_raw > self.ODOM_GAP_DT:
++                    # odometry gap: the elapsed *simulated* time is unknown.
++                    # Each particle gets its own elapsed time tau in [0, dt] -> the scan picks the right one.
++                    tau = np.random.uniform(0.0, dt, self.MAX_PARTICLES)
++                    dyaw_i = tw.angular.z * tau
++                    half = 0.5 * dyaw_i
++                    small = np.abs(half) < 1e-6
++                    chord = speed * tau * np.where(small, 1.0, np.sin(half) / np.where(small, 1.0, half))
++                    self.odometry_data = np.stack([chord * np.cos(half), chord * np.sin(half), dyaw_i], axis=1)
++                    self.odom_gaps += 1
++                    self.after_gap = True
++                    self.get_logger().warn(
++                        f'odometry gap #{self.odom_gaps}: {dt_raw * 1e3:.0f} ms between EKF messages at '
++                        f'{speed:.1f} m/s -> elapsed time unknown, particles spread over 0..{dt * 1e3:.0f} ms of motion')
++                else:
++                    if jumped or self.after_gap:  # the EKF heading jumps with the stamps and snaps back next message
++                        dyaw = tw.angular.z * dt
++                        self.after_gap = jumped
++                    elif abs(dyaw - tw.angular.z * dt) > self.ODOM_GATE_ROT + 2.0 * dt:  # heading change not plausible
++                        dyaw = tw.angular.z * dt
++                    half = 0.5 * dyaw
++                    chord = speed * dt * (np.sin(half) / half if abs(half) > 1e-6 else 1.0)
++                    self.odometry_data = np.array([chord * np.cos(half), chord * np.sin(half), dyaw])
++            # [8조 11/24] odometry jump gate (see __init__)
++            # Heading change: trusted from the EKF (it comes from the IMU orientation). Distance: speed x dt.
++            # Expected motion = arc of length v*dt turning by dyaw (car frame). Only the translation is gated,
++            # because after an EKF stall dt is long and (instantaneous yaw rate x dt) would be wrong.
++            if self.ODOM_MOTION != 'velocity' and self.ODOM_GATE and self.last_odom_t is not None:
++                dt = min(max(t_msg - self.last_odom_t, 0.0), self.ODOM_GATE_MAX_DT)
++                tw = msg.twist.twist
++                arc = np.hypot(tw.linear.x, tw.linear.y) * dt * (1.0 if tw.linear.x >= 0.0 else -1.0)
++                half = 0.5 * dyaw
++                chord = arc * (np.sin(half) / half if abs(half) > 1e-6 else 1.0)
++                expected = np.array([chord * np.cos(half), chord * np.sin(half), dyaw])
++                err_t = np.hypot(self.odometry_data[0] - expected[0], self.odometry_data[1] - expected[1])
++                if err_t > self.ODOM_GATE_TRANS + 0.3 * abs(arc) or abs(dyaw) > self.ODOM_GATE_ROT + 8.0 * dt:
++                    self.odom_rejected += 1
++                    if abs(dyaw) > self.ODOM_GATE_ROT + 8.0 * dt:  # heading jump as well: integrate the yaw rate
++                        expected[2] = tw.angular.z * dt
++                    self.get_logger().warn(
++                        f'odometry jump rejected #{self.odom_rejected}: pose delta ({self.odometry_data[0]:.2f}, '
++                        f'{self.odometry_data[1]:.2f}, {self.odometry_data[2]:.2f}) vs expected ({expected[0]:.2f}, '
++                        f'{expected[1]:.2f}, {expected[2]:.2f}) over {dt:.3f} s -> using expected')
++                    self.odometry_data = expected
++            self.last_odom_t = t_msg
++            self.last_odom_recv = t_recv
+             self.last_pose = pose
+             self.last_stamp = msg.header.stamp
+             self.odom_initialized = True
+         else:
+             self.get_logger().info('...Received first Odometry message')
+             self.last_pose = pose
++            self.last_odom_t = t_msg
++            self.last_odom_recv = t_recv
+ 
+         # this topic is slower than lidar, so update every time we receive a message
+         self.update()
+@@ -510,9 +612,11 @@ class ParticleFiler(Node):
+         cosines = np.cos(proposal_dist[:,2])
+         sines = np.sin(proposal_dist[:,2])
+ 
+-        self.local_deltas[:,0] = cosines*action[0] - sines*action[1]
+-        self.local_deltas[:,1] = sines*action[0] + cosines*action[1]
+-        self.local_deltas[:,2] = action[2]
++        # [8조 11/24 v4] action is (3,) for all particles or (N, 3) per particle (after an odometry gap)
++        ax, ay, ath = (action[:,0], action[:,1], action[:,2]) if action.ndim == 2 else action
++        self.local_deltas[:,0] = cosines*ax - sines*ay
++        self.local_deltas[:,1] = sines*ax + cosines*ay
++        self.local_deltas[:,2] = ath
+ 
+         proposal_dist[:,:] += self.local_deltas
+         proposal_dist[:,0] += np.random.normal(loc=0.0,scale=self.MOTION_DISPERSION_X,size=self.MAX_PARTICLES)

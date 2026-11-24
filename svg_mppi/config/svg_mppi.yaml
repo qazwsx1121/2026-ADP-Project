@@ -12,6 +12,8 @@ svg_mppi:
     map_frame_id: map
     robot_frame_id: ""                 # 비우면 /car_state/odom 의 child_frame_id 사용 (우리 스택: car_state/base_link)
     drive_publish_enabled: true
+    pose_latency_comp: true        # [11/24] 위치 메시지의 나이(도착 지연 + 도착 후 흐른 시간)만큼 속도로 앞으로 예측해서 사용 (pf 지연 보정)
+    pose_latency_max: 0.4          # [s] 보정 최대값 (EKF 가 ~0.35 s 멈추면 위치도 멈춤 -> 그만큼 예측)
     laser_offset_x: 0.275          # TF(base_link<-laser)를 못 찾을 때만 사용
     visualize_candidates: false    # true: 샘플 궤적 100개를 /mppi/candidate_paths 로 표시 (계산 시간 증가)
     publish_costmap_every: 4       # /mppi/local_costmap 을 4주기마다 발행 (0이면 끔)
@@ -87,6 +89,7 @@ svg_mppi:
       reference_speed_scale: 1.0   # 배율은 speed_scaling.yaml(global_limit)에서 이미 적용됨
       max_speed: 100.0
       update_rate: 0.025           # 레이스라인 지도 갱신 주기 [s] (공식과 같이 제어와 별도 스레드)
+      threads: 2                   # [11/24] 레이스라인 지도 계산 스레드 (위치 추정 노드 몫의 CPU 확보, MPPI 샘플 수와 무관)
 
     # ---------- local_costmap_generator_simulation.yaml ----------
     local_costmap:

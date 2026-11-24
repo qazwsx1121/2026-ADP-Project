@@ -250,6 +250,12 @@ class SVGMPPINode : public rclcpp::Node {
     ref_speed_scale_ = declare_parameter<double>("reference_sdf.reference_speed_scale", 1.0);
     ref_max_speed_ = declare_parameter<double>("reference_sdf.max_speed", 100.0);
     ref_update_rate_ = declare_parameter<double>("reference_sdf.update_rate", 0.025);
+    // [11/24] reference SDF is cheap: give it fewer OpenMP threads so localisation (EKF, particle filter) keeps CPU
+    ref_threads_ = declare_parameter<int>("reference_sdf.threads", 2);
+    // [11/24] pose latency compensation: the localisation pose is ~0.05-0.1 s old when it arrives (pf). Predict it forward
+    // to "now" with the reported velocity and yaw rate before using it as the MPPI initial state.
+    pose_latency_comp_ = declare_parameter<bool>("pose_latency_comp", true);
+    pose_latency_max_ = declare_parameter<double>("pose_latency_max", 0.4);
     // [추가] 최근접 waypoint 검색 방식. false = 공식 코드(전체 경로에서 최근접), true = 직전 위치 주변만 검색
     ref_local_search_ = declare_parameter<bool>("reference_sdf.local_search", false);
     ref_search_back_ = declare_parameter<int>("reference_sdf.local_search_back_num", 10);
@@ -311,6 +317,13 @@ class SVGMPPINode : public rclcpp::Node {
       robot_.y = m->pose.pose.position.y;
       robot_.yaw = wrap(yaw_from_quat(q.x, q.y, q.z, q.w));
       robot_.vel = m->twist.twist.linear.x;
+      robot_yaw_rate_ = m->twist.twist.angular.z;
+      robot_stamp_ = rclcpp::Time(m->header.stamp, get_clock()->get_clock_type());
+      // [11/24] latency at arrival (stamp -> now) and arrival time on the steady clock. The system clock can jump
+      // (WSL2: +2.94 s every ~32 s, the car does not move meanwhile), so the pose age is measured on the steady clock.
+      const double lat = (now() - robot_stamp_).seconds();
+      robot_recv_latency_ = (lat > 0.0 && lat < 1.0) ? lat : 0.0;  // >= 1 s: the clock jumped in between
+      robot_recv_steady_ = steady_sec();
       // [guide] pose history so that scan points are projected with the pose at the scan time
       pose_hist_.push_back({rclcpp::Time(m->header.stamp).seconds(), robot_.x, robot_.y, robot_.yaw});
       while (pose_hist_.size() > 200) pose_hist_.pop_front();
@@ -396,6 +409,8 @@ class SVGMPPINode : public rclcpp::Node {
       else if (n == "reference_sdf.max_speed") ref_max_speed_ = q.as_double();
       else if (n == "reference_speed") reference_speed_ = q.as_double();
       else if (n == "constant_speed_mode") constant_speed_mode_ = q.as_bool();
+      else if (n == "pose_latency_comp") pose_latency_comp_ = q.as_bool();
+      else if (n == "pose_latency_max") pose_latency_max_ = q.as_double();
       else if (n == "steer_1st_delay") {
         std::lock_guard<std::mutex> lk(params_mtx_);
         steer_1st_delay_param_ = q.as_double();
@@ -558,7 +573,7 @@ class SVGMPPINode : public rclcpp::Node {
     const auto size = map->getSize();
     const int linear = static_cast<int>(size.prod());
     const double scale = ref_speed_scale_, vmax = ref_max_speed_;
-#pragma omp parallel for num_threads(thread_num_.load())
+#pragma omp parallel for num_threads(std::max(1, ref_threads_))
     for (int i = 0; i < linear; ++i) {
       const grid_map::Index index(grid_map::getIndexFromLinearIndex(i, size));
       grid_map::Position pos;
@@ -1160,6 +1175,22 @@ class SVGMPPINode : public rclcpp::Node {
       }
       robot = robot_;
       scan = scan_;
+      if (pose_latency_comp_ && robot_recv_steady_ > 0.0) {  // [11/24] predict the pose to now
+        // age = latency at arrival + time since arrival (steady clock). A localisation stall (EKF missed its rate for
+        // ~0.35 s: /car_state/odom stops, pf and gt alike) is extrapolated up to pose_latency_max.
+        const double age = robot_recv_latency_ + (steady_sec() - robot_recv_steady_);
+        const double tau = std::clamp(age, 0.0, static_cast<double>(pose_latency_max_));
+        const double yaw_mid = robot.yaw + 0.5 * robot_yaw_rate_ * tau;
+        robot.x += robot.vel * std::cos(yaw_mid) * tau;
+        robot.y += robot.vel * std::sin(yaw_mid) * tau;
+        robot.yaw = wrap(robot.yaw + robot_yaw_rate_ * tau);
+        last_pose_latency_ = tau;
+        if (age > pose_latency_max_)
+          RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000, "pose is %.0f ms old (localisation stalled): extrapolated %.0f ms",
+                               age * 1e3, tau * 1e3);
+        else
+          RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 10000, "pose latency compensation: %.0f ms", tau * 1e3);
+      }
       if (odom_frame_ != map_frame_)
         RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 10000, "odom frame '%s' != map_frame_id '%s'", odom_frame_.c_str(),
                              map_frame_.c_str());
@@ -1394,6 +1425,12 @@ class SVGMPPINode : public rclcpp::Node {
   int publish_costmap_every_ = 4, cycle_ = 0;
   std::atomic<int> thread_num_{12};
   double laser_offset_x_ = 0.275, control_sampling_time_ = 0.025, steer_1st_delay_ = 0.1, steer_1st_delay_param_ = 0.1;
+  int ref_threads_ = 2;
+  std::atomic<bool> pose_latency_comp_{true};
+  std::atomic<double> pose_latency_max_{0.4};
+  double robot_yaw_rate_ = 0.0, last_pose_latency_ = 0.0;
+  double robot_recv_steady_ = 0.0, robot_recv_latency_ = 0.0;
+  rclcpp::Time robot_stamp_{0, 0, RCL_ROS_TIME};
   std::atomic<double> reference_speed_{1.5};
 
   // solver + live rebuild
