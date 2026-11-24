@@ -26,6 +26,7 @@ ForzaETH race stack(ROS 2 Humble)의 PP/TLN 컨트롤러를 **SVG-MPPI**(Honda e
 | [`apply_to_pc.sh`](apply_to_pc.sh) | 저장소 내용을 이 PC(컨테이너)에 적용: 코드 갱신 + 빌드, 실험·학습 결과는 보존 |
 | [`학교PC_시작하기.md`](학교PC_시작하기.md) | 학교 PC에서 세팅 → 학습 → 검증까지 단계별 안내 |
 | [`학교PC_노이즈실험.md`](학교PC_노이즈실험.md) | 평가 때 장애물 노이즈 대비: 노이즈 실험, 노이즈를 켠 학습·검증 |
+| [`학교PC_pf검증.md`](학교PC_pf검증.md) | 학교 PC(우분투)에서 pf 위치 추정 안정화 검증 절차·판단 기준 (Claude Code 인수인계 포함) |
 
 ## 시작하기
 
