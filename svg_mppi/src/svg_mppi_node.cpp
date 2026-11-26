@@ -128,6 +128,10 @@ struct GuideCfg {
   double max_curvature = 0.0;  // [1/m] pause guide if max |kappa| of the raceline near the car exceeds this (0 = never)
   double curv_ahead = 2.0;     // [m] raceline window ahead of the car for that check
   double curv_back = 0.5;      // [m] ... and behind
+  // [11/26] ...but not while avoiding: if obstacle points are within this distance ahead of the car (scan-based),
+  // the guide keeps running through the tight part. Pausing there snapped the reference back onto the obstacle
+  // it was passing (hairpin-entrance crashes, seed 42/5). 0 = always pause (11/22 behaviour).
+  double curv_keep_obs = 2.5;  // [m]
 };
 
 struct ObsPt {
@@ -279,7 +283,7 @@ class SVGMPPINode : public rclcpp::Node {
                 {"guide.memory", &GuideCfg::memory},             {"guide.blend", &GuideCfg::blend},
                 {"guide.speed_scale", &GuideCfg::speed_scale},   {"guide.max_range", &GuideCfg::max_range},
                 {"guide.max_curvature", &GuideCfg::max_curvature}, {"guide.curv_ahead", &GuideCfg::curv_ahead},
-                {"guide.curv_back", &GuideCfg::curv_back}};
+                {"guide.curv_back", &GuideCfg::curv_back},       {"guide.curv_keep_obs", &GuideCfg::curv_keep_obs}};
     for (auto& [name, field] : guide_d_) g.*field = declare_parameter<double>(name, g.*field);
 
     // ---------------- local_costmap_generator_simulation.yaml ----------------
@@ -689,18 +693,13 @@ class SVGMPPINode : public rclcpp::Node {
     guide_idx_ = ir;
 
     // [11/22] curvature rule: raceline too tight around the car -> follow the plain raceline (generic, map-derived)
+    // [11/26] decided after the obstacle scan below: kept running while obstacles are close ahead (curv_keep_obs)
+    double kmax = 0.0;
     if (c.max_curvature > 0.0) {
-      double kmax = 0.0;
       const int nb = static_cast<int>(std::round(c.curv_back / 0.1)), na = static_cast<int>(std::round(c.curv_ahead / 0.1));
       for (int m = -nb; m <= na; ++m) kmax = std::max(kmax, std::abs(path[((ir + m) % n + n) % n].kappa));
-      if (kmax > c.max_curvature) {
-        if (!prev_guide_.empty())
-          RCLCPP_INFO(get_logger(), "guide paused: raceline curvature %.2f > %.2f 1/m", kmax, c.max_curvature);
-        prev_guide_.clear();
-        publish_f32(pub_guide_offset_, 0.0);
-        return false;
-      }
     }
+    const bool tight = c.max_curvature > 0.0 && kmax > c.max_curvature;
     const double cpsi = std::cos(path[ir].psi), spsi = std::sin(path[ir].psi);
     const double d_car = cpsi * (robot.y - path[ir].y) - spsi * (robot.x - path[ir].x);
 
@@ -764,6 +763,25 @@ class SVGMPPINode : public rclcpp::Node {
       obs.push_back({s, d, px, py});
     }
     publish_guide_obstacles(obs);
+    if (tight) {
+      bool near_obs = false;
+      if (c.curv_keep_obs > 0.0)
+        for (const auto& o : obs)
+          if (o.s > -0.6 && o.s < c.curv_keep_obs) {
+            near_obs = true;
+            break;
+          }
+      if (!near_obs) {
+        if (!prev_guide_.empty())
+          RCLCPP_INFO(get_logger(), "guide paused: raceline curvature %.2f > %.2f 1/m", kmax, c.max_curvature);
+        prev_guide_.clear();
+        publish_f32(pub_guide_offset_, 0.0);
+        return false;
+      }
+      RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+                           "guide kept in tight curve (%.2f > %.2f 1/m): obstacle within %.1f m ahead", kmax, c.max_curvature,
+                           c.curv_keep_obs);
+    }
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 10000, "guide: scan is %.1f ms newer than the last odom", scan_pose_dt_ * 1e3);
     if (obs.empty()) {
       prev_guide_.clear();
