@@ -16,13 +16,15 @@
 #   eval=1             최종 평가 방식: 자동 복구 없음, 첫 충돌(차가 멈춤) / maxlaps 바퀴 / dur 초 중 먼저 오는 것에서 종료
 #   maxlaps=10         eval=1 일 때 이 바퀴 수를 채우면 종료 (평가: 최대 10바퀴 또는 3분)
 #   pose=pf            차량 위치 소스: pf(particle filter, 기본, 최종 평가와 같음) | gt(시뮬 정답, 11/20 이전 결과와 비교할 때). pf면 시작 때 /initialpose 로 측위 초기화
+#   race_first=1       1: race_manager 를 먼저 켜고 첫 장애물 배치가 끝난 뒤 svg_mppi 를 켬 (race_manager 가 장애물 후보 계산에 ~3 s 걸려
+#                      그동안 차가 달리면 첫 장애물이 차 위에 생기는 문제 회피). 0: 예전 순서 (svg_mppi 먼저)
 #   [장애물 노이즈] onoise=0.10 위치 σ[m]  orot=1 회전 무작위  odyn=0.02 매초 추가로 흔듦[m]  nseed=0
 #   [라이다 노이즈] snoise=0.03 거리 σ[m]  sdrop=0.02 빔 누락 확률  sghost=0.005 허상 점 확률 (컨트롤러만 봄)
 # 결과: ~/shared_dir/svg_mppi_exp/runs/<날짜_시간>_<tag>/  (race_result_*.json/png, trace.csv, events.csv, *.log)
 
 TAG=${1:-run}; shift
 dur=120; params=""; mode=svg_mppi; obs=0; seed=2026; gui=0; recover=1; set=""; sched=""; debug=0
-onoise=0; orot=0; odyn=0; nseed=0; snoise=0; sdrop=0; sghost=0; pose=pf; eval=0; maxlaps=10
+onoise=0; orot=0; odyn=0; nseed=0; snoise=0; sdrop=0; sghost=0; pose=pf; eval=0; maxlaps=10; race_first=1
 for kv in "$@"; do printf -v "${kv%%=*}" '%s' "${kv#*=}"; done   # key=value (값에 공백이 있어도 됨)
 [ "$eval" = 1 ] && recover=0   # 평가 방식: 충돌하면 그 run 은 끝 (사람이 옮기지 않음)
 
@@ -33,7 +35,7 @@ EXP=~/shared_dir/svg_mppi_exp
 OUT=$EXP/runs/$(date +%Y%m%d_%H%M%S)_$TAG
 mkdir -p "$OUT"
 WPNTS=~/forza_ws/race_stack/stack_master/maps/berlin/global_waypoints.json
-echo "tag=$TAG dur=$dur params=$params mode=$mode obs=$obs seed=$seed gui=$gui recover=$recover set=$set sched=$sched debug=$debug onoise=$onoise orot=$orot odyn=$odyn nseed=$nseed snoise=$snoise sdrop=$sdrop sghost=$sghost pose=$pose eval=$eval maxlaps=$maxlaps" | tee "$OUT/config.txt"
+echo "tag=$TAG dur=$dur params=$params mode=$mode obs=$obs seed=$seed gui=$gui recover=$recover set=$set sched=$sched debug=$debug onoise=$onoise orot=$orot odyn=$odyn nseed=$nseed snoise=$snoise sdrop=$sdrop sghost=$sghost pose=$pose race_first=$race_first eval=$eval maxlaps=$maxlaps" | tee "$OUT/config.txt"
 cp "$params" "$OUT/params.yaml"
 if [ "$debug" = 1 ]; then printf '    debug:\n      dump_dir: "%s"\n' "$OUT" >> "$OUT/params.yaml"; fi
 [ -n "$sched" ] && cp "$sched" "$OUT/schedule.yaml"
@@ -85,11 +87,14 @@ fi
 start monitor python3 $EXP/tools/exp_monitor.py --ros-args -p out_dir:=$OUT -p waypoints_file:=$WPNTS -p recover:=$([ "$recover" = 1 ] && echo true || echo false) \
   -p stop_file:=$([ "$eval" = 1 ] && echo "$OUT/STOP" || echo "")
 [ $SCAN_NOISE = 1 ] && start scannoise python3 $EXP/tools/scan_noise.py --ros-args -p sigma:=$snoise -p drop:=$sdrop -p ghost:=$sghost -p seed:=$nseed
-start mppi ros2 launch svg_mppi svg_mppi_launch.xml mpc_mode:=$mode params:=$OUT/params.yaml
-# MPPI 가 주행을 시작할 때까지 대기
-for i in $(seq 1 60); do grep -q "SVG-MPPI ready" "$OUT/mppi.log" && break; sleep 1; done
-for kv in $set; do ros2 param set /svg_mppi "${kv%%:=*}" "${kv#*:=}" >> "$OUT/param_set.log" 2>&1; done
-[ -n "$sched" ] && start sched python3 $EXP/tools/param_scheduler.py --ros-args -p table:=$OUT/schedule.yaml
+start_mppi() {
+  start mppi ros2 launch svg_mppi svg_mppi_launch.xml mpc_mode:=$mode params:=$OUT/params.yaml
+  # MPPI 가 주행을 시작할 때까지 대기
+  for i in $(seq 1 60); do grep -q "SVG-MPPI ready" "$OUT/mppi.log" && break; sleep 1; done
+  for kv in $set; do ros2 param set /svg_mppi "${kv%%:=*}" "${kv#*:=}" >> "$OUT/param_set.log" 2>&1; done
+  [ -n "$sched" ] && start sched python3 $EXP/tools/param_scheduler.py --ros-args -p table:=$OUT/schedule.yaml
+}
+[ "$race_first" = 1 ] || start_mppi
 if [ $OBS_NOISE = 1 ]; then
   # spawner -> /sim/obstacles_raw -> obstacle_noise.py -> /sim/obstacles (simulator); scorer started last (RACE_PID)
   CFG=$(ros2 pkg prefix race_manager)/share/race_manager/config/race_manager_params.yaml
@@ -99,12 +104,19 @@ if [ $OBS_NOISE = 1 ]; then
     -p num_obstacles:=$obs -p seed:=$seed -r /sim/obstacles:=/sim/obstacles_raw -r /sim/obstacles/markers:=/sim/obstacles_raw/markers
   start race ros2 run race_manager scorer --ros-args --params-file $CFG -p map_name:=berlin -p waypoints_file:=$WPNTS \
     -p seed:=$seed -p log_dir:=$OUT
+  RACE_PID=$!
   for i in $(seq 1 30); do grep -q "new layout" "$OUT/onoise.log" && break; sleep 0.5; done
   grep -q "new layout" "$OUT/onoise.log" || { echo "ERROR: obstacle_noise did not publish obstacles (see $OUT/onoise.log)"; exit 1; }
 else
   start race ros2 launch race_manager race_manager_launch.xml map_name:=berlin seed:=$seed num_obstacles:=$obs \
     log_dir:=$OUT plot:=$([ "$gui" = 1 ] && echo true || echo false)
+  RACE_PID=$!
+  if [ "$race_first" = 1 ] && [ "$obs" != 0 ]; then  # 첫 장애물 배치(obstacle_spawner "lap 0 [")가 끝날 때까지 대기
+    for i in $(seq 1 60); do grep -q "lap 0 \[" "$OUT/race.log" && break; sleep 0.5; done
+    grep -q "lap 0 \[" "$OUT/race.log" || echo "warning: first obstacle layout not seen in 30 s (see $OUT/race.log)"
+  fi
 fi
+[ "$race_first" = 1 ] && start_mppi
 
 echo "running $dur s ... ($OUT)"
 # eval=1: 첫 충돌(monitor 가 STOP 파일을 만듦) 또는 maxlaps 바퀴 완주 시 일찍 끝냄
@@ -120,8 +132,6 @@ while [ $(date +%s) -lt $t_end ]; do
 done
 
 # race_manager 를 먼저 Ctrl-C 로 끝내 요약을 남긴다
-for p in $PIDS; do :; done
-RACE_PID=$(echo $PIDS | awk '{print $NF}')
 kill -INT -- -$RACE_PID 2>/dev/null; sleep 3
 cleanup; trap - EXIT
 
